@@ -11,11 +11,20 @@ const isoHoje = () => {
 const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+const TIPOS = {
+  gasto: { rota: 'gastos', nome: 'Gasto', chave: 'ultimaCategoria', placeholder: '0,00  ou  45 mercado' },
+  ganho: { rota: 'ganhos', nome: 'Ganho', chave: 'ultimaCategoriaGanho', placeholder: '0,00  ou  3000 salário' },
+};
+
 const state = {
   mes: isoHoje().slice(0, 7),
-  categorias: [],
-  catSel: Number(localStorage.getItem('ultimaCategoria')) || null,
-  gastos: [],
+  tipo: 'gasto',
+  categorias: { gasto: [], ganho: [] },
+  catSel: {
+    gasto: Number(localStorage.getItem(TIPOS.gasto.chave)) || null,
+    ganho: Number(localStorage.getItem(TIPOS.ganho.chave)) || null,
+  },
+  lancamentos: [],
   resumo: null,
   filtro: '',
 };
@@ -63,28 +72,42 @@ const deslocaMes = (mes, delta) => {
 };
 
 /* ---------- Cadastro rápido ---------- */
+function setTipo(tipo) {
+  state.tipo = tipo;
+  document.querySelectorAll('.tipo-abas button').forEach((b) => b.setAttribute('aria-checked', b.dataset.tipo === tipo));
+  $('#form').classList.toggle('modo-ganho', tipo === 'ganho');
+  $('#valor').placeholder = TIPOS[tipo].placeholder;
+  $('#valor').setAttribute('aria-label', `Valor do ${TIPOS[tipo].nome.toLowerCase()}`);
+  renderChips();
+}
+$('.tipo-abas').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  setTipo(b.dataset.tipo);
+  $('#valor').focus();
+});
+
 function renderChips() {
-  $('#chips').innerHTML = state.categorias
-    .map((c) => `<button type="button" class="chip" role="radio" data-id="${c.id}" style="--cor:${c.cor}" aria-checked="${c.id === state.catSel}">${c.emoji} ${esc(c.nome)}</button>`)
+  const sel = state.catSel[state.tipo];
+  $('#chips').innerHTML = state.categorias[state.tipo]
+    .map((c) => `<button type="button" class="chip" role="radio" data-id="${c.id}" style="--cor:${c.cor}" aria-checked="${c.id === sel}">${c.emoji} ${esc(c.nome)}</button>`)
     .join('');
 }
-function selecionaCategoria(id) {
-  state.catSel = id;
-  localStorage.setItem('ultimaCategoria', id);
-  renderChips();
+function selecionaCategoria(tipo, id) {
+  state.catSel[tipo] = id;
+  localStorage.setItem(TIPOS[tipo].chave, id);
+  if (tipo === state.tipo) renderChips();
 }
 $('#chips').addEventListener('click', (e) => {
   const b = e.target.closest('.chip');
   if (!b) return;
-  selecionaCategoria(Number(b.dataset.id));
-  const valor = $('#valor');
-  // com valor já digitado, tocar na categoria salva direto
-  if (valor.value.trim()) $('#form').requestSubmit();
-  else valor.focus();
+  // só escolhe a categoria; o valor digitado fica no campo até a pessoa salvar
+  selecionaCategoria(state.tipo, Number(b.dataset.id));
+  $('#valor').focus();
 });
 
 // "45 mercado pão" -> valor 45, categoria Mercado, descrição "pão"
-function interpreta(texto) {
+function interpreta(texto, categorias) {
   const m = texto.trim().match(/^(\d+(?:[.,]\d{1,2})?)\s*(.*)$/);
   if (!m) return null;
   let valor = m[1];
@@ -93,8 +116,8 @@ function interpreta(texto) {
   if (resto) {
     const [primeira, ...demais] = resto.split(/\s+/);
     const p = norm(primeira);
-    const cat = state.categorias.find((c) => norm(c.nome) === p) ||
-      (p.length >= 3 ? state.categorias.find((c) => norm(c.nome).startsWith(p)) : null);
+    const cat = categorias.find((c) => norm(c.nome) === p) ||
+      (p.length >= 3 ? categorias.find((c) => norm(c.nome).startsWith(p)) : null);
     if (cat) {
       catId = cat.id;
       resto = demais.join(' ');
@@ -105,26 +128,32 @@ function interpreta(texto) {
 
 $('#form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const parsed = interpreta($('#valor').value);
+  // "+3000 salário" lança um ganho mesmo com a aba Gasto aberta
+  const texto = $('#valor').value;
+  const tipo = /^\s*\+/.test(texto) ? 'ganho' : state.tipo;
+  const parsed = interpreta(texto.replace(/^\s*\+/, ''), state.categorias[tipo]);
   if (!parsed) return toast('Digite um valor válido', { erro: true });
-  const categoria_id = parsed.catId || state.catSel;
-  if (!categoria_id) return toast('Escolha uma categoria', { erro: true });
+  const categoria_id = parsed.catId || state.catSel[tipo];
+  if (!categoria_id) {
+    if (tipo !== state.tipo) setTipo(tipo);
+    return toast('Escolha uma categoria', { erro: true });
+  }
   const descricao = [parsed.resto, $('#descricao').value.trim()].filter(Boolean).join(' ');
   const data = $('#data').value || isoHoje();
 
   // limpa já, para o próximo lançamento poder ser digitado sem esperar a rede
-  const textos = { valor: $('#valor').value, descricao: $('#descricao').value, data: $('#data').value };
-  if (parsed.catId) selecionaCategoria(parsed.catId);
+  const textos = { valor: texto, descricao: $('#descricao').value };
+  if (parsed.catId) selecionaCategoria(tipo, parsed.catId);
   $('#valor').value = '';
   $('#descricao').value = '';
   resetData();
   $('#valor').focus();
 
   try {
-    const g = await api('/api/gastos', { method: 'POST', body: { valor: parsed.valor, categoria_id, descricao, data } });
+    const g = await api(`/api/${TIPOS[tipo].rota}`, { method: 'POST', body: { valor: parsed.valor, categoria_id, descricao, data } });
     if (g.data.slice(0, 7) !== state.mes) state.mes = g.data.slice(0, 7);
-    toast(`${g.emoji} ${money(g.valor_centavos)} em ${g.categoria}`, {
-      acao: { label: 'Desfazer', fn: () => remover(g.id, false) },
+    toast(`${g.emoji} ${tipo === 'ganho' ? '+' : ''}${money(g.valor_centavos)} em ${g.categoria}`, {
+      acao: { label: 'Desfazer', fn: () => remover(tipo, g.id, false) },
     });
     await carregar();
   } catch (err) {
@@ -146,19 +175,23 @@ $('#data').addEventListener('change', () => {
 
 /* ---------- Dados ---------- */
 async function carregar() {
-  const [resumo, gastos] = await Promise.all([
+  const [resumo, gastos, ganhos] = await Promise.all([
     api(`/api/resumo?mes=${state.mes}`),
     api(`/api/gastos?mes=${state.mes}`),
+    api(`/api/ganhos?mes=${state.mes}`),
   ]);
   state.resumo = resumo;
-  state.gastos = gastos;
+  state.lancamentos = [
+    ...gastos.map((g) => ({ ...g, tipo: 'gasto' })),
+    ...ganhos.map((g) => ({ ...g, tipo: 'ganho' })),
+  ].sort((a, b) => b.data.localeCompare(a.data) || b.criado_em.localeCompare(a.criado_em) || b.id - a.id);
   render();
 }
 
-async function remover(id, confirmar = true) {
+async function remover(tipo, id, confirmar = true) {
   try {
-    await api(`/api/gastos/${id}`, { method: 'DELETE' });
-    if (confirmar) toast('Gasto removido');
+    await api(`/api/${TIPOS[tipo].rota}/${id}`, { method: 'DELETE' });
+    if (confirmar) toast(`${TIPOS[tipo].nome} removido`);
     await carregar();
   } catch (err) {
     toast(err.message, { erro: true });
@@ -170,6 +203,7 @@ function render() {
   $('#mes-titulo').textContent = tituloMes(state.mes);
   renderCards();
   renderRosca();
+  renderGanhos();
   renderDias();
   renderFiltro();
   renderLista();
@@ -182,12 +216,26 @@ function renderCards() {
     const v = ((r.total - r.total_mes_anterior) / r.total_mes_anterior) * 100;
     variacao = `${v >= 0 ? '▲' : '▼'} ${pct(Math.abs(v))} vs. mês anterior`;
   }
+  let uso = 'Lance seus ganhos para ver o saldo';
+  let barra = '';
+  if (r.ganhos > 0) {
+    const p = (r.total / r.ganhos) * 100;
+    uso = r.saldo >= 0 ? `Gastou ${pct(p)} do que entrou` : 'Gastou mais do que entrou';
+    barra = `<div class="uso" aria-hidden="true"><i style="width:${Math.min(100, p)}%"></i></div>`;
+  }
+  const n = r.quantidade_ganhos;
   $('#cards').innerHTML = `
-    <div class="card destaque"><div class="rot">Total do mês</div><div class="val">${money(r.total)}</div><div class="sub">${variacao}</div></div>
-    <div class="card"><div class="rot">Média por dia</div><div class="val">${money(r.media_diaria)}</div></div>
-    <div class="card"><div class="rot">Lançamentos</div><div class="val">${r.quantidade}</div></div>
+    <div class="card destaque${r.saldo < 0 ? ' negativo' : ''}"><div class="rot">Saldo do mês</div><div class="val">${money(r.saldo)}</div>${barra}<div class="sub">${uso}</div></div>
+    <div class="card"><div class="rot">Ganhos</div><div class="val ganho">${money(r.ganhos)}</div><div class="sub">${n} ${n === 1 ? 'lançamento' : 'lançamentos'}</div></div>
+    <div class="card"><div class="rot">Gastos</div><div class="val">${money(r.total)}</div><div class="sub">${variacao}</div></div>
+    <div class="card"><div class="rot">Gasto médio por dia</div><div class="val">${money(r.media_diaria)}</div></div>
     <div class="card"><div class="rot">Maior gasto</div><div class="val">${money(r.maior)}</div></div>`;
 }
+
+const itemLegenda = (c, total) => {
+  const p = (c.total / total) * 100;
+  return `<li><div class="leg-topo"><span>${c.emoji} ${esc(c.nome)}</span><span class="v">${money(c.total)}<span class="p">${pct(p)}</span></span></div><div class="barra"><i style="width:${p}%;background:${c.cor}"></i></div></li>`;
+};
 
 function renderRosca() {
   const r = state.resumo;
@@ -205,10 +253,13 @@ function renderRosca() {
     return s;
   }).join('');
   $('#rosca').innerHTML = `<svg viewBox="0 0 100 100" role="img" aria-label="Gastos por categoria">${arcos}<text class="centro" x="50" y="53" font-size="9" font-weight="700">${r.por_categoria.length} cat.</text></svg>`;
-  $('#legenda').innerHTML = r.por_categoria.map((c) => {
-    const p = (c.total / r.total) * 100;
-    return `<li><div class="leg-topo"><span>${c.emoji} ${esc(c.nome)}</span><span class="v">${money(c.total)}<span class="p">${pct(p)}</span></span></div><div class="barra"><i style="width:${p}%;background:${c.cor}"></i></div></li>`;
-  }).join('');
+  $('#legenda').innerHTML = r.por_categoria.map((c) => itemLegenda(c, r.total)).join('');
+}
+
+function renderGanhos() {
+  const r = state.resumo;
+  $('#painel-ganhos').hidden = !r.ganhos;
+  $('#legenda-ganhos').innerHTML = r.ganhos ? r.ganhos_por_categoria.map((c) => itemLegenda(c, r.ganhos)).join('') : '';
 }
 
 function renderDias() {
@@ -229,30 +280,36 @@ function renderDias() {
   $('#dias').innerHTML = `<svg viewBox="0 0 ${W} ${H + 4}" preserveAspectRatio="none" role="img" aria-label="Gasto por dia">${barras}${rotulos}</svg>`;
 }
 
+// valores do filtro: "" (tudo), "gasto", "ganho" ou "tipo:categoria_id"
 function renderFiltro() {
+  const grupo = (tipo, rotulo, todos) =>
+    `<optgroup label="${rotulo}"><option value="${tipo}">${todos}</option>` +
+    state.categorias[tipo].map((c) => `<option value="${tipo}:${c.id}">${c.emoji} ${esc(c.nome)}</option>`).join('') +
+    '</optgroup>';
   const sel = $('#filtro');
-  sel.innerHTML = '<option value="">Todas as categorias</option>' +
-    state.categorias.map((c) => `<option value="${c.id}">${c.emoji} ${esc(c.nome)}</option>`).join('');
+  sel.innerHTML = '<option value="">Tudo</option>' + grupo('gasto', 'Gastos', 'Todos os gastos') + grupo('ganho', 'Ganhos', 'Todos os ganhos');
   sel.value = state.filtro;
 }
 
 function renderLista() {
-  const itens = state.filtro ? state.gastos.filter((g) => String(g.categoria_id) === state.filtro) : state.gastos;
+  const [tipo, cat] = state.filtro.split(':');
+  const itens = state.lancamentos.filter((l) => (!tipo || l.tipo === tipo) && (!cat || String(l.categoria_id) === cat));
   if (!itens.length) { $('#lista').innerHTML = '<li class="vazio">Nenhum lançamento.</li>'; return; }
-  $('#lista').innerHTML = itens.map((g) => {
-    const [, mm, dd] = g.data.split('-');
-    return `<li class="item" style="--cor:${g.cor}">
-      <div class="ico">${g.emoji}</div>
-      <div class="meio"><div class="t1">${esc(g.descricao || g.categoria)}</div><div class="t2">${dd}/${mm}${g.descricao ? ` · ${esc(g.categoria)}` : ''}</div></div>
-      <div class="valor">${money(g.valor_centavos)}</div>
-      <button class="del" data-id="${g.id}" aria-label="Excluir gasto">✕</button>
+  $('#lista').innerHTML = itens.map((l) => {
+    const [, mm, dd] = l.data.split('-');
+    const ganho = l.tipo === 'ganho';
+    return `<li class="item" style="--cor:${l.cor}">
+      <div class="ico">${l.emoji}</div>
+      <div class="meio"><div class="t1">${esc(l.descricao || l.categoria)}</div><div class="t2">${dd}/${mm}${l.descricao ? ` · ${esc(l.categoria)}` : ''}</div></div>
+      <div class="valor${ganho ? ' ganho' : ''}">${ganho ? '+' : ''}${money(l.valor_centavos)}</div>
+      <button class="del" data-tipo="${l.tipo}" data-id="${l.id}" aria-label="Excluir ${TIPOS[l.tipo].nome.toLowerCase()}">✕</button>
     </li>`;
   }).join('');
 }
 
 $('#lista').addEventListener('click', (e) => {
   const b = e.target.closest('.del');
-  if (b) remover(Number(b.dataset.id));
+  if (b) remover(b.dataset.tipo, Number(b.dataset.id));
 });
 $('#filtro').addEventListener('change', (e) => { state.filtro = e.target.value; renderLista(); });
 $('#mes-ant').addEventListener('click', () => { state.mes = deslocaMes(state.mes, -1); carregar(); });
@@ -299,7 +356,7 @@ $('#auth-form').addEventListener('submit', async (e) => {
 });
 $('#sair').addEventListener('click', async () => {
   try { await api('/api/logout', { method: 'POST' }); } catch {}
-  state.gastos = [];
+  state.lancamentos = [];
   state.resumo = null;
   $('#toast').hidden = true;
   mostrarAuth();
@@ -312,9 +369,12 @@ async function iniciarApp(usuario) {
   $('#auth').hidden = true;
   $('#app').hidden = false;
   state.mes = isoHoje().slice(0, 7);
-  state.categorias = await api('/api/categorias');
-  if (!state.categorias.some((c) => c.id === state.catSel)) state.catSel = null;
-  renderChips();
+  const [gasto, ganho] = await Promise.all([api('/api/categorias'), api('/api/categorias-ganho')]);
+  state.categorias = { gasto, ganho };
+  for (const t of ['gasto', 'ganho']) {
+    if (!state.categorias[t].some((c) => c.id === state.catSel[t])) state.catSel[t] = null;
+  }
+  setTipo('gasto');
   await carregar();
   $('#valor').focus();
 }

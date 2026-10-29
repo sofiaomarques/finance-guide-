@@ -46,6 +46,22 @@ db.exec(`
     data TEXT NOT NULL,
     criado_em TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE TABLE IF NOT EXISTS categorias_ganho (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL UNIQUE,
+    cor TEXT NOT NULL,
+    emoji TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS ganhos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    valor_centavos INTEGER NOT NULL CHECK (valor_centavos > 0),
+    categoria_id INTEGER NOT NULL REFERENCES categorias_ganho(id),
+    descricao TEXT NOT NULL DEFAULT '',
+    data TEXT NOT NULL,
+    criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_ganhos_usuario_data ON ganhos(usuario_id, data);
 `);
 // bancos criados antes do cadastro de usuários não têm a coluna usuario_id
 if (!db.prepare('PRAGMA table_info(gastos)').all().some((c) => c.name === 'usuario_id')) {
@@ -71,6 +87,25 @@ const SEED = [
 ];
 const insCat = db.prepare('INSERT OR IGNORE INTO categorias (nome, cor, emoji) VALUES (?, ?, ?)');
 for (const c of SEED) insCat.run(...c);
+
+const SEED_GANHO = [
+  ['Salário', '#2f8a4e', '💼'],
+  ['Freela', '#0f9fb0', '💻'],
+  ['Vendas', '#e0a800', '🏷️'],
+  ['Investimentos', '#3b82c4', '📈'],
+  ['Presente', '#d65db1', '🎁'],
+  ['Reembolso', '#8b5cf6', '↩️'],
+  ['Outros', '#8a94a0', '💰'],
+];
+const insCatGanho = db.prepare('INSERT OR IGNORE INTO categorias_ganho (nome, cor, emoji) VALUES (?, ?, ?)');
+for (const c of SEED_GANHO) insCatGanho.run(...c);
+
+// gastos e ganhos têm o mesmo formato; muda só a tabela e de onde vêm as categorias.
+// os nomes vêm só daqui, então dá para interpolar no SQL
+const TIPOS = {
+  gastos: { tabela: 'gastos', categorias: 'categorias', nome: 'Gasto' },
+  ganhos: { tabela: 'ganhos', categorias: 'categorias_ganho', nome: 'Ganho' },
+};
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -186,8 +221,8 @@ function validarCadastro(body) {
   return { nome, email, senha };
 }
 
-/* ---------- Gastos ---------- */
-function validar(body, parcial = false) {
+/* ---------- Gastos e ganhos ---------- */
+function validar(body, tipo, parcial = false) {
   const out = {};
   if (!parcial || 'valor' in body) {
     const v = typeof body.valor === 'string' ? Number(body.valor.replace(',', '.')) : body.valor;
@@ -196,7 +231,7 @@ function validar(body, parcial = false) {
   }
   if (!parcial || 'categoria_id' in body) {
     const id = Number(body.categoria_id);
-    if (!Number.isInteger(id) || !db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(id)) {
+    if (!Number.isInteger(id) || !db.prepare(`SELECT 1 FROM ${tipo.categorias} WHERE id = ?`).get(id)) {
       throw new HttpError(400, 'Categoria inexistente');
     }
     out.categoria_id = id;
@@ -210,20 +245,21 @@ function validar(body, parcial = false) {
   return out;
 }
 
-const SELECT_GASTO = `
+const selectLancamento = (tipo) => `
   SELECT g.id, g.valor_centavos, g.categoria_id, g.descricao, g.data, g.criado_em,
          c.nome AS categoria, c.cor, c.emoji
-  FROM gastos g JOIN categorias c ON c.id = g.categoria_id`;
+  FROM ${tipo.tabela} g JOIN ${tipo.categorias} c ON c.id = g.categoria_id`;
 
 function resumo(uid, mes) {
-  const total = (m) =>
-    db.prepare("SELECT COALESCE(SUM(valor_centavos),0) AS t, COUNT(*) AS n, COALESCE(MAX(valor_centavos),0) AS maior FROM gastos WHERE usuario_id=? AND substr(data,1,7)=?").get(uid, m);
-  const atual = total(mes);
-  const anterior = total(mesAnterior(mes));
-  const porCategoria = db.prepare(`
+  const total = (tipo, m) =>
+    db.prepare(`SELECT COALESCE(SUM(valor_centavos),0) AS t, COUNT(*) AS n, COALESCE(MAX(valor_centavos),0) AS maior FROM ${tipo.tabela} WHERE usuario_id=? AND substr(data,1,7)=?`).get(uid, m);
+  const porCategoria = (tipo) => db.prepare(`
     SELECT c.id, c.nome, c.cor, c.emoji, COALESCE(SUM(g.valor_centavos),0) AS total, COUNT(g.id) AS n
-    FROM categorias c JOIN gastos g ON g.categoria_id = c.id AND g.usuario_id = ? AND substr(g.data,1,7) = ?
+    FROM ${tipo.categorias} c JOIN ${tipo.tabela} g ON g.categoria_id = c.id AND g.usuario_id = ? AND substr(g.data,1,7) = ?
     GROUP BY c.id ORDER BY total DESC`).all(uid, mes);
+  const atual = total(TIPOS.gastos, mes);
+  const anterior = total(TIPOS.gastos, mesAnterior(mes));
+  const ganhos = total(TIPOS.ganhos, mes);
   const porDia = db.prepare(`
     SELECT CAST(substr(data,9,2) AS INTEGER) AS dia, SUM(valor_centavos) AS total
     FROM gastos WHERE usuario_id=? AND substr(data,1,7)=? GROUP BY data ORDER BY data`).all(uid, mes);
@@ -240,8 +276,12 @@ function resumo(uid, mes) {
     media_diaria: Math.round(atual.t / diasDecorridos),
     dias_no_mes: diasNoMes,
     total_mes_anterior: anterior.t,
-    por_categoria: porCategoria,
+    por_categoria: porCategoria(TIPOS.gastos),
     por_dia: porDia,
+    ganhos: ganhos.t,
+    quantidade_ganhos: ganhos.n,
+    ganhos_por_categoria: porCategoria(TIPOS.ganhos),
+    saldo: ganhos.t - atual.t,
   };
 }
 
@@ -303,33 +343,40 @@ async function api(req, res, url) {
   if (pathname === '/api/categorias' && m === 'GET') {
     return db.prepare('SELECT * FROM categorias ORDER BY id').all();
   }
-  if (pathname === '/api/gastos' && m === 'GET') {
-    const mes = searchParams.get('mes') || hoje().slice(0, 7);
-    if (!reMes.test(mes)) throw new HttpError(400, 'Mês inválido (use YYYY-MM)');
-    return db.prepare(`${SELECT_GASTO} WHERE g.usuario_id=? AND substr(g.data,1,7)=? ORDER BY g.data DESC, g.id DESC`).all(uid, mes);
+  if (pathname === '/api/categorias-ganho' && m === 'GET') {
+    return db.prepare('SELECT * FROM categorias_ganho ORDER BY id').all();
   }
-  if (pathname === '/api/gastos' && m === 'POST') {
-    const d = validar(await lerCorpo(req));
-    const r = db.prepare('INSERT INTO gastos (usuario_id, valor_centavos, categoria_id, descricao, data) VALUES (?,?,?,?,?)')
-      .run(uid, d.valor_centavos, d.categoria_id, d.descricao ?? '', d.data);
-    res.statusCode = 201;
-    return db.prepare(`${SELECT_GASTO} WHERE g.id=?`).get(r.lastInsertRowid);
+  if ((match = pathname.match(/^\/api\/(gastos|ganhos)$/))) {
+    const tipo = TIPOS[match[1]];
+    if (m === 'GET') {
+      const mes = searchParams.get('mes') || hoje().slice(0, 7);
+      if (!reMes.test(mes)) throw new HttpError(400, 'Mês inválido (use YYYY-MM)');
+      return db.prepare(`${selectLancamento(tipo)} WHERE g.usuario_id=? AND substr(g.data,1,7)=? ORDER BY g.data DESC, g.id DESC`).all(uid, mes);
+    }
+    if (m === 'POST') {
+      const d = validar(await lerCorpo(req), tipo);
+      const r = db.prepare(`INSERT INTO ${tipo.tabela} (usuario_id, valor_centavos, categoria_id, descricao, data) VALUES (?,?,?,?,?)`)
+        .run(uid, d.valor_centavos, d.categoria_id, d.descricao ?? '', d.data);
+      res.statusCode = 201;
+      return db.prepare(`${selectLancamento(tipo)} WHERE g.id=?`).get(r.lastInsertRowid);
+    }
   }
-  if ((match = pathname.match(/^\/api\/gastos\/(\d+)$/))) {
-    const id = Number(match[1]);
+  if ((match = pathname.match(/^\/api\/(gastos|ganhos)\/(\d+)$/))) {
+    const tipo = TIPOS[match[1]];
+    const id = Number(match[2]);
     if (m === 'DELETE') {
-      const r = db.prepare('DELETE FROM gastos WHERE id=? AND usuario_id=?').run(id, uid);
-      if (!r.changes) throw new HttpError(404, 'Gasto não encontrado');
+      const r = db.prepare(`DELETE FROM ${tipo.tabela} WHERE id=? AND usuario_id=?`).run(id, uid);
+      if (!r.changes) throw new HttpError(404, `${tipo.nome} não encontrado`);
       return { ok: true };
     }
     if (m === 'PATCH') {
-      const d = validar(await lerCorpo(req), true);
+      const d = validar(await lerCorpo(req), tipo, true);
       const campos = Object.keys(d);
       if (!campos.length) throw new HttpError(400, 'Nada para atualizar');
-      const r = db.prepare(`UPDATE gastos SET ${campos.map((c) => `${c}=?`).join(', ')} WHERE id=? AND usuario_id=?`)
+      const r = db.prepare(`UPDATE ${tipo.tabela} SET ${campos.map((c) => `${c}=?`).join(', ')} WHERE id=? AND usuario_id=?`)
         .run(...campos.map((c) => d[c]), id, uid);
-      if (!r.changes) throw new HttpError(404, 'Gasto não encontrado');
-      return db.prepare(`${SELECT_GASTO} WHERE g.id=?`).get(id);
+      if (!r.changes) throw new HttpError(404, `${tipo.nome} não encontrado`);
+      return db.prepare(`${selectLancamento(tipo)} WHERE g.id=?`).get(id);
     }
   }
   if (pathname === '/api/resumo' && m === 'GET') {

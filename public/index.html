@@ -38,6 +38,10 @@
   <div id="app" hidden>
   <header class="topo">
     <form id="form" autocomplete="off">
+      <div class="tipo-abas" role="radiogroup" aria-label="Tipo de lançamento">
+        <button type="button" role="radio" data-tipo="gasto" aria-checked="true">Gasto</button>
+        <button type="button" role="radio" data-tipo="ganho" aria-checked="false">Ganho</button>
+      </div>
       <div class="linha-valor">
         <span class="rs">R$</span>
         <input id="valor" type="text" inputmode="decimal" placeholder="0,00  ou  45 mercado" enterkeyhint="done" aria-label="Valor do gasto" autofocus>
@@ -48,7 +52,7 @@
         <input id="descricao" type="text" placeholder="Descrição (opcional)" maxlength="200" aria-label="Descrição">
         <label class="data-label">
           <span id="data-txt">Hoje</span>
-          <input id="data" type="date" aria-label="Data do gasto">
+          <input id="data" type="date" aria-label="Data do lançamento">
         </label>
       </div>
     </form>
@@ -69,11 +73,16 @@
     <section class="cards" id="cards"></section>
 
     <section class="painel">
-      <h2>Por categoria</h2>
+      <h2>Gastos por categoria</h2>
       <div class="rosca-wrap">
         <div id="rosca" class="rosca"></div>
         <ul id="legenda" class="legenda"></ul>
       </div>
+    </section>
+
+    <section class="painel" id="painel-ganhos" hidden>
+      <h2>De onde veio o dinheiro</h2>
+      <ul id="legenda-ganhos" class="legenda"></ul>
     </section>
 
     <section class="painel">
@@ -84,7 +93,7 @@
     <section class="painel">
       <div class="lanc-topo">
         <h2>Lançamentos</h2>
-        <select id="filtro" aria-label="Filtrar por categoria"></select>
+        <select id="filtro" aria-label="Filtrar lançamentos"></select>
       </div>
       <ul id="lista" class="lista"></ul>
     </section>

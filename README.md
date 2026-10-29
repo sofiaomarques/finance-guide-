@@ -15,10 +15,16 @@ Abra http://localhost:3000. Os dados ficam em `data/gastos.db`.
 - Login bloqueia por 15 min após 10 tentativas erradas do mesmo IP.
 
 ## Cadastro rápido
-- Digite o valor e toque numa categoria: salva na hora.
+- Digite o valor, toque numa categoria e aperte Enter ou **Adicionar**. Trocar de categoria (ou de Gasto para Ganho) não apaga o valor digitado.
 - Ou digite tudo no campo de valor: `45 mercado pão` → R$ 45, Mercado, "pão".
 - A última categoria usada fica selecionada; Enter salva.
 - Toast com **Desfazer** após cada cadastro.
+
+## Ganhos e saldo do mês
+- Troque para a aba **Ganho** no topo para lançar dinheiro que entrou (salário, freela, vendas…).
+- Atalho: comece com `+` na aba Gasto mesmo, ex.: `+3000 salário`.
+- O card principal mostra o **saldo do mês** (ganhos − gastos) e quanto dos ganhos já foi gasto; fica vermelho se o saldo ficar negativo.
+- A lista de lançamentos junta gastos e ganhos; o filtro separa por tipo ou categoria.
 
 ## Usar no celular
 Com o Mac e o celular na mesma rede Wi-Fi, abra `http://<ip-do-mac>:3000` no celular

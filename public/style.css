@@ -12,6 +12,7 @@
   --brand-light: #f08a3c;
   --brand-ink: #ffffff;
   --danger: #c43b3b;
+  --ganho: #23784a;         /* verde (contraste AA com branco) */
   --shadow: 0 1px 2px rgb(92 69 16 / 0.06), 0 6px 18px rgb(92 69 16 / 0.06);
   --radius: 18px;
 }
@@ -30,6 +31,7 @@
     --brand-light: #f6a463;
     --brand-ink: #2a1505;
     --danger: #f0736d;
+    --ganho: #74d095;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 18px rgb(0 0 0 / 0.25);
   }
 }
@@ -59,8 +61,14 @@ button { cursor: pointer; transition: background-color 0.15s, border-color 0.15s
 }
 #form { max-width: 760px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 #form > * { min-width: 0; }
+/* no modo ganho o botão e o foco ficam verdes */
+#form.modo-ganho { --brand: var(--ganho); }
+.tipo-abas { justify-self: start; display: flex; gap: 2px; padding: 3px; background: color-mix(in srgb, var(--surface) 55%, transparent); border-radius: 999px; }
+.tipo-abas button { border: 0; background: transparent; padding: 4px 16px; border-radius: 999px; font-size: 0.88rem; font-weight: 600; color: var(--butter-ink); }
+.tipo-abas button[aria-checked="true"] { background: var(--brand); color: var(--brand-ink); }
 .linha-valor { display: flex; align-items: center; gap: 8px; }
 .rs { font-weight: 700; color: var(--butter-ink); }
+.modo-ganho .rs::before { content: "+"; }
 #valor {
   flex: 1;
   min-width: 0;
@@ -162,7 +170,10 @@ main { max-width: 760px; margin: 0 auto; padding: 18px 16px 40px; display: grid;
 }
 .card.destaque .rot, .card.destaque .sub { color: inherit; opacity: 0.9; }
 .card.destaque .val { font-size: 2rem; }
-@media (min-width: 640px) { .card.destaque { grid-column: auto; } }
+.card.destaque.negativo { background: linear-gradient(135deg, color-mix(in srgb, var(--danger) 80%, #fff), var(--danger)); }
+.card .val.ganho { color: var(--ganho); }
+.uso { height: 6px; margin: 4px 0 6px; border-radius: 3px; background: rgb(255 255 255 / 0.3); overflow: hidden; }
+.uso i { display: block; height: 100%; border-radius: 3px; background: currentColor; }
 
 .painel {
   background: var(--surface);
@@ -231,6 +242,7 @@ main { max-width: 760px; margin: 0 auto; padding: 18px 16px 40px; display: grid;
 .item .t1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .item .t2 { font-size: 0.8rem; color: var(--muted); }
 .item .valor { font-weight: 700; font-variant-numeric: tabular-nums; }
+.item .valor.ganho { color: var(--ganho); }
 .item .del {
   border: 0; background: transparent;
   color: var(--muted);
