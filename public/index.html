@@ -22,18 +22,21 @@
         <button type="button" role="tab" data-modo="login" aria-selected="true">Entrar</button>
         <button type="button" role="tab" data-modo="cadastro" aria-selected="false">Criar conta</button>
       </div>
+      <p id="auth-dica" class="auth-dica" hidden></p>
       <form id="auth-form" novalidate>
         <label class="campo" id="campo-nome" hidden>Nome
           <input id="auth-nome" type="text" autocomplete="name" maxlength="80">
         </label>
-        <label class="campo">E-mail
+        <label class="campo" id="campo-email">E-mail
           <input id="auth-email" type="email" autocomplete="email" inputmode="email" required>
         </label>
-        <label class="campo">Senha
+        <label class="campo" id="campo-senha"><span id="rotulo-senha">Senha</span>
           <input id="auth-senha" type="password" autocomplete="current-password" minlength="8" required>
         </label>
         <p id="auth-erro" class="auth-erro" role="alert" hidden></p>
+        <p id="auth-info" class="auth-info" role="status" hidden></p>
         <button type="submit" id="auth-btn">Entrar</button>
+        <button type="button" id="auth-link" class="auth-link">Esqueci minha senha</button>
       </form>
     </div>
   </section>

@@ -16,6 +16,8 @@ No celular, use "Adicionar à tela inicial" no menu do navegador para abrir como
 - Senhas guardadas com scrypt; sessão em cookie `HttpOnly` válido por 30 dias.
 - Gastos lançados antes de existir cadastro ficam com quem criar a **primeira** conta.
 - Login bloqueia por 15 min após 10 tentativas erradas do mesmo IP.
+- **Esqueci minha senha** (na tela de login) manda por e-mail um link que vale por 1 hora e só uma vez.
+  Criar a senha nova encerra a sessão nos outros aparelhos. Rodando local, o e-mail aparece no terminal.
 
 ## Cadastro rápido
 - Digite o valor, toque numa categoria e aperte Enter ou **Adicionar**. Trocar de categoria (ou de Gasto para Ganho) não apaga o valor digitado.
@@ -36,21 +38,9 @@ No celular, use "Adicionar à tela inicial" no menu do navegador para abrir como
 - Filtro **Todos / Gastos / Ganhos**.
 - A aba escolhida (Painel ou Meu mês) fica salva no navegador.
 
-## Rodar localmente
-Node 20+.
-
-```bash
-npm install
-npm start
-```
-
-Abra http://localhost:3000. Os dados ficam em `data/gastos.db` (SQLite).
-
-Para testar no celular sem publicar: com o Mac e o celular na mesma rede Wi-Fi, abra
-`http://<ip-do-mac>:3000` (`ipconfig getifaddr en0` mostra o IP).
-
 ## Deploy (Vercel)
-O Vercel não guarda arquivos entre execuções, então em produção os dados ficam num banco
+O app roda no Vercel em https://finance-guide-five.vercel.app. O Vercel não guarda arquivos
+entre execuções, então os dados ficam num banco
 [Turso](https://turso.tech) (SQLite na nuvem, plano grátis). Sem ele, o site abre mas o login
 avisa "Banco de dados não configurado".
 
@@ -63,3 +53,13 @@ avisa "Banco de dados não configurado".
   [CLI do Turso](https://docs.turso.tech/cli/introduction): `turso db create financas`,
   `turso db show financas --url` e `turso db tokens create financas`.
 - Depois de salvar as variáveis, faça **Redeploy**. As tabelas e categorias são criadas sozinhas no primeiro acesso.
+
+### E-mail de recuperação de senha
+Os e-mails saem pelo [Resend](https://resend.com) (plano grátis: 3.000 por mês). Sem a chave, a
+opção "Esqueci minha senha" avisa que a recuperação não foi configurada.
+
+- `RESEND_API_KEY`: chave criada em resend.com → **API Keys** (permissão *Sending access* basta)
+- `EMAIL_REMETENTE` (opcional): remetente, ex. `Saldo <senha@seudominio.com.br>`. Sem ela, usa
+  `onboarding@resend.dev`, que **só entrega para o e-mail da sua própria conta no Resend**. Para mandar
+  para qualquer pessoa, verifique um domínio seu em resend.com → **Domains**.
+- `APP_URL` (opcional): endereço usado no link do e-mail. Sem ela, usa o domínio de produção do Vercel.

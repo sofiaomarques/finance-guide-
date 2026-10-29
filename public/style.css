@@ -457,3 +457,16 @@ main { padding-top: 8px; padding-bottom: 48px; }
 .campo input { padding: 10px 12px; font-size: 1rem; color: var(--text); }
 .auth-erro { margin: 0; padding: 8px 12px; border-radius: var(--r-campo); background: color-mix(in srgb, var(--neg) 12%, var(--surface)); color: var(--neg); font-size: 0.9rem; }
 #auth-btn { padding: 12px; margin-top: 4px; }
+.auth-dica { margin: -6px 0 0; color: var(--muted); font-size: 0.9rem; text-align: center; }
+.auth-info { margin: 0; padding: 8px 12px; border-radius: var(--r-campo); background: color-mix(in srgb, var(--pos) 12%, var(--surface)); color: var(--pos); font-size: 0.9rem; }
+.auth-link {
+  justify-self: center;
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.auth-link:hover { color: var(--text); }

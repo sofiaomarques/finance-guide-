@@ -12,6 +12,7 @@ const DATA = path.join(__dirname, 'data');
 
 const SESSAO_COOKIE = 'sessao';
 const SESSAO_DIAS = 30;
+const REDEFINIR_MIN = 60;
 
 // no Vercel o disco é somente leitura e não guarda nada entre execuções, então lá os dados
 // ficam num banco Turso (SQLite na nuvem, via HTTP); rodando local, usa o arquivo em data/
@@ -70,6 +71,11 @@ async function prepararBanco() {
     criado_em TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS sessoes (
+    token_hash TEXT PRIMARY KEY,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    expira_em TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS redefinicoes (
     token_hash TEXT PRIMARY KEY,
     usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
     expira_em TEXT NOT NULL
@@ -214,7 +220,10 @@ async function usuarioDaSessao(req) {
     WHERE s.token_hash = ? AND s.expira_em > datetime('now')`, sha256(token));
 }
 
-// limite simples de tentativas de login por IP, em memória (no Vercel vale por instância)
+// atrás do proxy do Vercel o IP real vem no x-forwarded-for
+const ipDe = (req) => (process.env.VERCEL ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() : req.socket.remoteAddress);
+
+// limite simples de tentativas por IP, em memória (no Vercel vale por instância)
 const tentativas = new Map();
 const JANELA_MS = 15 * 60 * 1000;
 const MAX_TENTATIVAS = 10;
@@ -236,9 +245,63 @@ function validarCadastro(body) {
   const senha = String(body.senha ?? '');
   if (!nome) throw new HttpError(400, 'Informe seu nome');
   if (!reEmail.test(email) || email.length > 254) throw new HttpError(400, 'E-mail inválido');
+  return { nome, email, senha: validarSenha(senha) };
+}
+function validarSenha(valor) {
+  const senha = String(valor ?? '');
   if (senha.length < 8) throw new HttpError(400, 'A senha precisa ter pelo menos 8 caracteres');
   if (senha.length > 200) throw new HttpError(400, 'Senha muito longa');
-  return { nome, email, senha };
+  return senha;
+}
+
+/* ---------- E-mail (Resend) ---------- */
+// sem RESEND_API_KEY: rodando local, o e-mail sai no terminal; no Vercel, a recuperação de senha fica desligada
+const emailConfigurado = () => Boolean(process.env.RESEND_API_KEY) || !process.env.VERCEL;
+
+// o link do e-mail não usa o Host da requisição, que quem pede o e-mail poderia forjar
+function enderecoDoApp() {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  return `http://localhost:${PORT}`;
+}
+
+const escHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function emailRedefinicao(u, link) {
+  return {
+    para: u.email,
+    assunto: 'Crie uma senha nova no Saldo',
+    texto: `Olá, ${u.nome}!\n\nPara criar uma senha nova, abra este link (vale por ${REDEFINIR_MIN} minutos):\n${link}\n\n`
+      + 'Se não foi você que pediu, ignore este e-mail: sua senha continua a mesma.',
+    html: `<div style="font-family:system-ui,sans-serif;font-size:16px;line-height:1.5;color:#23251b">
+      <p>Olá, ${escHtml(u.nome)}!</p>
+      <p>Para criar uma senha nova no Saldo, toque no botão abaixo. O link vale por ${REDEFINIR_MIN} minutos.</p>
+      <p><a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:6px;background:#56652a;color:#fff;text-decoration:none;font-weight:600">Criar senha nova</a></p>
+      <p style="color:#67664f;font-size:14px">Se não foi você que pediu, ignore este e-mail: sua senha continua a mesma.</p>
+    </div>`,
+  };
+}
+
+async function enviarEmail({ para, assunto, texto, html }) {
+  if (!process.env.RESEND_API_KEY) {
+    console.log(`\n[e-mail para ${para}] ${assunto}\n${texto}\n`);
+    return;
+  }
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: process.env.EMAIL_REMETENTE || 'Saldo <onboarding@resend.dev>',
+      to: [para],
+      subject: assunto,
+      text: texto,
+      html,
+    }),
+  });
+  if (!r.ok) {
+    console.error('Resend recusou o e-mail:', r.status, await r.text());
+    throw new HttpError(502, 'Não foi possível enviar o e-mail agora. Tente de novo em alguns minutos.');
+  }
 }
 
 /* ---------- Gastos e ganhos ---------- */
@@ -347,8 +410,7 @@ async function api(req, res, url) {
     return { id, nome: d.nome, email: d.email };
   }
   if (pathname === '/api/login' && m === 'POST') {
-    // atrás do proxy do Vercel o IP real vem no x-forwarded-for
-    const ip = process.env.VERCEL ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() : req.socket.remoteAddress;
+    const ip = ipDe(req);
     checaLimite(ip);
     const body = await lerCorpo(req);
     const email = String(body.email ?? '').trim().toLowerCase();
@@ -368,6 +430,48 @@ async function api(req, res, url) {
     if (token) await roda('DELETE FROM sessoes WHERE token_hash = ?', sha256(token));
     res.setHeader('Set-Cookie', `${SESSAO_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
     return { ok: true };
+  }
+  if (pathname === '/api/esqueci-senha' && m === 'POST') {
+    if (!emailConfigurado()) throw new HttpError(503, 'A recuperação de senha por e-mail ainda não foi configurada');
+    // cada pedido conta como tentativa: segura quem tentar lotar a caixa de alguém com e-mails
+    const chave = `esqueci:${ipDe(req)}`;
+    checaLimite(chave);
+    registraFalha(chave);
+    const email = String((await lerCorpo(req)).email ?? '').trim().toLowerCase();
+    if (!reEmail.test(email)) throw new HttpError(400, 'E-mail inválido');
+    const u = await um('SELECT id, nome, email FROM usuarios WHERE email = ?', email);
+    if (u) {
+      // o banco guarda só o hash do token, como nas sessões; um link novo invalida os anteriores
+      const token = crypto.randomBytes(32).toString('base64url');
+      await db.batch([
+        { sql: "DELETE FROM redefinicoes WHERE usuario_id = ? OR expira_em <= datetime('now')", args: [u.id] },
+        {
+          sql: `INSERT INTO redefinicoes (token_hash, usuario_id, expira_em) VALUES (?, ?, datetime('now', '+${REDEFINIR_MIN} minutes'))`,
+          args: [sha256(token), u.id],
+        },
+      ], 'write');
+      // o token vai depois do #, que o navegador não manda para o servidor nem para outros sites
+      await enviarEmail(emailRedefinicao(u, `${enderecoDoApp()}/#redefinir=${token}`));
+    }
+    // a resposta é a mesma exista ou não a conta
+    return { ok: true };
+  }
+  if (pathname === '/api/redefinir-senha' && m === 'POST') {
+    const body = await lerCorpo(req);
+    const senhaHash = await hashSenha(validarSenha(body.senha));
+    // apaga e lê numa operação só, então o mesmo link não serve duas vezes
+    const r = await um(`DELETE FROM redefinicoes WHERE token_hash = ? AND expira_em > datetime('now') RETURNING usuario_id`,
+      sha256(String(body.token ?? '')));
+    if (!r) throw new HttpError(400, 'Este link não vale mais. Peça um novo em "Esqueci minha senha".');
+    const uid = r.usuario_id;
+    // senha nova derruba as sessões abertas em outros aparelhos
+    await db.batch([
+      { sql: 'UPDATE usuarios SET senha_hash = ? WHERE id = ?', args: [senhaHash, uid] },
+      { sql: 'DELETE FROM redefinicoes WHERE usuario_id = ?', args: [uid] },
+      { sql: 'DELETE FROM sessoes WHERE usuario_id = ?', args: [uid] },
+    ], 'write');
+    await criarSessao(res, uid);
+    return um('SELECT id, nome, email FROM usuarios WHERE id = ?', uid);
   }
 
   const usuario = await usuarioDaSessao(req);

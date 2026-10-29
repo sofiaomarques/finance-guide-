@@ -410,8 +410,19 @@ $('#filtro').addEventListener('change', (e) => { state.filtro = e.target.value; 
 $('#mes-ant').addEventListener('click', () => { state.mes = deslocaMes(state.mes, -1); carregar(); });
 $('#mes-prox').addEventListener('click', () => { state.mes = deslocaMes(state.mes, 1); carregar(); });
 
-/* ---------- Login e cadastro ---------- */
+/* ---------- Login, cadastro e recuperação de senha ---------- */
+const MODOS_AUTH = {
+  login: { rota: '/api/login', botao: 'Entrar', link: 'Esqueci minha senha' },
+  cadastro: { rota: '/api/cadastro', botao: 'Criar conta' },
+  esqueci: {
+    rota: '/api/esqueci-senha', botao: 'Enviar link', link: 'Voltar para o login',
+    dica: 'Digite o e-mail da sua conta. Vamos mandar um link para você criar uma senha nova.',
+  },
+  redefinir: { rota: '/api/redefinir-senha', botao: 'Salvar nova senha', link: 'Voltar para o login', dica: 'Crie uma senha nova para a sua conta.' },
+};
 let modoAuth = 'login';
+let tokenRedefinir = '';
+
 function mostrarAuth() {
   $('#app').hidden = true;
   $('#auth').hidden = false;
@@ -419,29 +430,64 @@ function mostrarAuth() {
 }
 function trocaModo(modo) {
   modoAuth = modo;
-  const cadastro = modo === 'cadastro';
+  const cfg = MODOS_AUTH[modo];
+  const senhaNova = modo === 'cadastro' || modo === 'redefinir';
+  $('.auth-abas').hidden = modo !== 'login' && modo !== 'cadastro';
   document.querySelectorAll('.auth-abas button').forEach((b) => b.setAttribute('aria-selected', b.dataset.modo === modo));
-  $('#campo-nome').hidden = !cadastro;
-  $('#auth-senha').autocomplete = cadastro ? 'new-password' : 'current-password';
-  $('#auth-senha').placeholder = cadastro ? 'Mínimo de 8 caracteres' : '';
-  $('#auth-btn').textContent = cadastro ? 'Criar conta' : 'Entrar';
+  $('#campo-nome').hidden = modo !== 'cadastro';
+  $('#campo-email').hidden = modo === 'redefinir';
+  $('#campo-senha').hidden = modo === 'esqueci';
+  $('#rotulo-senha').textContent = modo === 'redefinir' ? 'Nova senha' : 'Senha';
+  $('#auth-senha').autocomplete = senhaNova ? 'new-password' : 'current-password';
+  $('#auth-senha').placeholder = senhaNova ? 'Mínimo de 8 caracteres' : '';
+  $('#auth-btn').textContent = cfg.botao;
+  $('#auth-dica').textContent = cfg.dica || '';
+  $('#auth-dica').hidden = !cfg.dica;
+  $('#auth-link').textContent = cfg.link || '';
+  $('#auth-link').hidden = !cfg.link;
   $('#auth-erro').hidden = true;
-  (cadastro ? $('#auth-nome') : $('#auth-email')).focus();
+  $('#auth-info').hidden = true;
+  $({ cadastro: '#auth-nome', redefinir: '#auth-senha' }[modo] || '#auth-email').focus();
+}
+// tira o token do endereço, para não ficar no histórico depois de usado
+function esqueceToken() {
+  tokenRedefinir = '';
+  history.replaceState(null, '', location.pathname);
 }
 $('.auth-abas').addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (b) trocaModo(b.dataset.modo);
 });
+$('#auth-link').addEventListener('click', () => {
+  if (modoAuth === 'login') return trocaModo('esqueci');
+  if (modoAuth === 'redefinir') esqueceToken();
+  trocaModo('login');
+});
 $('#auth-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const body = { email: $('#auth-email').value, senha: $('#auth-senha').value };
-  if (modoAuth === 'cadastro') body.nome = $('#auth-nome').value;
+  const modo = modoAuth;
+  const body = modo === 'redefinir'
+    ? { token: tokenRedefinir, senha: $('#auth-senha').value }
+    : { email: $('#auth-email').value, senha: $('#auth-senha').value };
+  if (modo === 'cadastro') body.nome = $('#auth-nome').value;
+  if (modo === 'esqueci') delete body.senha;
   $('#auth-btn').disabled = true;
   $('#auth-erro').hidden = true;
+  $('#auth-info').hidden = true;
   try {
-    const usuario = await api(modoAuth === 'cadastro' ? '/api/cadastro' : '/api/login', { method: 'POST', body });
+    const usuario = await api(MODOS_AUTH[modo].rota, { method: 'POST', body });
+    if (modo === 'esqueci') {
+      $('#auth-info').textContent = 'Se existir uma conta com esse e-mail, o link chega em alguns minutos. Confira também a caixa de spam.';
+      $('#auth-info').hidden = false;
+      return;
+    }
     $('#auth-senha').value = '';
+    if (modo === 'redefinir') {
+      esqueceToken();
+      trocaModo('login');
+    }
     await iniciarApp(usuario);
+    if (modo === 'redefinir') toast('Senha alterada');
   } catch (err) {
     $('#auth-erro').textContent = err.message;
     $('#auth-erro').hidden = false;
@@ -476,6 +522,13 @@ async function iniciarApp(usuario) {
 }
 
 (async function init() {
+  // veio pelo link do e-mail de recuperação: #redefinir=<token>
+  const link = location.hash.match(/^#redefinir=([\w-]+)$/);
+  if (link) {
+    tokenRedefinir = link[1];
+    mostrarAuth();
+    return trocaModo('redefinir');
+  }
   let usuario;
   try {
     usuario = await api('/api/eu');
