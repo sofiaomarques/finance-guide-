@@ -3,18 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Meus Gastos</title>
+  <title>Saldo</title>
   <meta name="theme-color" content="#f4f1e6" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#171912" media="(prefers-color-scheme: dark)">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@700&text=Saldo&display=swap">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <section id="auth" class="auth" hidden>
     <div class="auth-caixa">
-      <h1>Meus Gastos</h1>
+      <h1 class="logo">Saldo</h1>
       <div class="auth-abas" role="tablist">
         <button type="button" role="tab" data-modo="login" aria-selected="true">Entrar</button>
         <button type="button" role="tab" data-modo="cadastro" aria-selected="false">Criar conta</button>
@@ -37,7 +40,7 @@
 
   <div id="app" hidden>
   <header class="barra-app">
-    <span class="marca">Meus Gastos</span>
+    <span class="marca logo">Saldo</span>
     <div class="conta">
       <span id="conta-nome"></span>
       <button id="sair" type="button">Sair</button>
