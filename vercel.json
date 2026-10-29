@@ -1,0 +1,10 @@
+{
+  "framework": null,
+  "outputDirectory": "public",
+  "rewrites": [
+    {
+      "source": "/api/:rota*",
+      "destination": "/api"
+    }
+  ]
+}

@@ -3,22 +3,57 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { promisify } = require('node:util');
-const { DatabaseSync } = require('node:sqlite');
 
 const scrypt = promisify(crypto.scrypt);
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
 const DATA = path.join(__dirname, 'data');
-fs.mkdirSync(DATA, { recursive: true });
 
 const SESSAO_COOKIE = 'sessao';
 const SESSAO_DIAS = 30;
 
-const db = new DatabaseSync(path.join(DATA, 'gastos.db'));
-db.exec(`
-  PRAGMA journal_mode = WAL;
-  PRAGMA foreign_keys = ON;
+// no Vercel o disco é somente leitura e não guarda nada entre execuções, então lá os dados
+// ficam num banco Turso (SQLite na nuvem, via HTTP); rodando local, usa o arquivo em data/
+function abrirBanco() {
+  const url = process.env.TURSO_DATABASE_URL;
+  if (url) return require('@libsql/client/web').createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
+  if (process.env.VERCEL) return null;
+  fs.mkdirSync(DATA, { recursive: true });
+  return require('@libsql/client').createClient({ url: `file:${path.join(DATA, 'gastos.db')}` });
+}
+const db = abrirBanco();
+
+const roda = (sql, ...args) => db.execute({ sql, args });
+const um = async (sql, ...args) => (await roda(sql, ...args)).rows[0] || null;
+const todos = async (sql, ...args) => (await roda(sql, ...args)).rows;
+
+const SEED = [
+  ['Alimentação', '#c8743f', '🍽️'],
+  ['Mercado', '#6f8a3a', '🛒'],
+  ['Transporte', '#4f7a8c', '🚌'],
+  ['Moradia', '#8a6a8f', '🏠'],
+  ['Saúde', '#b5585a', '💊'],
+  ['Lazer', '#c9a23a', '🎬'],
+  ['Educação', '#4f8a7c', '📚'],
+  ['Assinaturas', '#7c6f64', '🔁'],
+  ['Compras', '#b07a9a', '🛍️'],
+  ['Outros', '#8a8c7e', '📦'],
+];
+const SEED_GANHO = [
+  ['Salário', '#5f7d3a', '💼'],
+  ['Freela', '#4f8a7c', '💻'],
+  ['Vendas', '#c9a23a', '🏷️'],
+  ['Investimentos', '#4f7a8c', '📈'],
+  ['Presente', '#b07a9a', '🎁'],
+  ['Reembolso', '#8a6a8f', '↩️'],
+  ['Outros', '#8a8c7e', '💰'],
+];
+
+async function prepararBanco() {
+  if (!db) throw new HttpError(503, 'Banco de dados não configurado no servidor (falta TURSO_DATABASE_URL)');
+  if (!process.env.TURSO_DATABASE_URL) await db.executeMultiple('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+  await db.executeMultiple(`
   CREATE TABLE IF NOT EXISTS categorias (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nome TEXT NOT NULL UNIQUE,
@@ -62,43 +97,23 @@ db.exec(`
     criado_em TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_ganhos_usuario_data ON ganhos(usuario_id, data);
-`);
-// bancos criados antes do cadastro de usuários não têm a coluna usuario_id
-if (!db.prepare('PRAGMA table_info(gastos)').all().some((c) => c.name === 'usuario_id')) {
-  db.exec('ALTER TABLE gastos ADD COLUMN usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE');
+  `);
+  // bancos criados antes do cadastro de usuários não têm a coluna usuario_id
+  if (!(await todos('PRAGMA table_info(gastos)')).some((c) => c.name === 'usuario_id')) {
+    await roda('ALTER TABLE gastos ADD COLUMN usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE');
+  }
+  await db.batch([
+    'DROP INDEX IF EXISTS idx_gastos_data',
+    'CREATE INDEX IF NOT EXISTS idx_gastos_usuario_data ON gastos(usuario_id, data)',
+    'CREATE INDEX IF NOT EXISTS idx_sessoes_usuario ON sessoes(usuario_id)',
+    // a cor segue o seed, então bancos antigos pegam a paleta nova
+    ...SEED.map((args) => ({ sql: 'INSERT INTO categorias (nome, cor, emoji) VALUES (?, ?, ?) ON CONFLICT(nome) DO UPDATE SET cor = excluded.cor', args })),
+    ...SEED_GANHO.map((args) => ({ sql: 'INSERT INTO categorias_ganho (nome, cor, emoji) VALUES (?, ?, ?) ON CONFLICT(nome) DO UPDATE SET cor = excluded.cor', args })),
+  ], 'write');
 }
-db.exec(`
-  DROP INDEX IF EXISTS idx_gastos_data;
-  CREATE INDEX IF NOT EXISTS idx_gastos_usuario_data ON gastos(usuario_id, data);
-  CREATE INDEX IF NOT EXISTS idx_sessoes_usuario ON sessoes(usuario_id);
-`);
-
-const SEED = [
-  ['Alimentação', '#e8743b', '🍽️'],
-  ['Mercado', '#3a9d5d', '🛒'],
-  ['Transporte', '#3b82c4', '🚌'],
-  ['Moradia', '#8b5cf6', '🏠'],
-  ['Saúde', '#d9485f', '💊'],
-  ['Lazer', '#e0a800', '🎬'],
-  ['Educação', '#0f9fb0', '📚'],
-  ['Assinaturas', '#7c6f64', '🔁'],
-  ['Compras', '#d65db1', '🛍️'],
-  ['Outros', '#8a94a0', '📦'],
-];
-const insCat = db.prepare('INSERT OR IGNORE INTO categorias (nome, cor, emoji) VALUES (?, ?, ?)');
-for (const c of SEED) insCat.run(...c);
-
-const SEED_GANHO = [
-  ['Salário', '#2f8a4e', '💼'],
-  ['Freela', '#0f9fb0', '💻'],
-  ['Vendas', '#e0a800', '🏷️'],
-  ['Investimentos', '#3b82c4', '📈'],
-  ['Presente', '#d65db1', '🎁'],
-  ['Reembolso', '#8b5cf6', '↩️'],
-  ['Outros', '#8a94a0', '💰'],
-];
-const insCatGanho = db.prepare('INSERT OR IGNORE INTO categorias_ganho (nome, cor, emoji) VALUES (?, ?, ?)');
-for (const c of SEED_GANHO) insCatGanho.run(...c);
+// cada instância prepara o banco uma vez; as requisições esperam isso terminar
+let pronto;
+const bancoPronto = () => (pronto ??= prepararBanco().catch((e) => { pronto = undefined; throw e; }));
 
 // gastos e ganhos têm o mesmo formato; muda só a tabela e de onde vêm as categorias.
 // os nomes vêm só daqui, então dá para interpolar no SQL
@@ -117,10 +132,9 @@ const MIME = {
   '.png': 'image/png',
 };
 
-const hoje = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+// o servidor do Vercel roda em UTC; "hoje" é sempre o dia no horário de Brasília
+const fmtHoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' });
+const hoje = () => fmtHoje.format(new Date());
 const reMes = /^\d{4}-(0[1-9]|1[0-2])$/;
 const reData = /^\d{4}-\d{2}-\d{2}$/;
 const reEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -178,23 +192,27 @@ function lerCookies(req) {
   return out;
 }
 
-function criarSessao(res, usuarioId) {
-  db.prepare("DELETE FROM sessoes WHERE expira_em <= datetime('now')").run();
+async function criarSessao(res, usuarioId) {
   const token = crypto.randomBytes(32).toString('base64url');
-  db.prepare(`INSERT INTO sessoes (token_hash, usuario_id, expira_em) VALUES (?, ?, datetime('now', '+${SESSAO_DIAS} days'))`)
-    .run(sha256(token), usuarioId);
+  await db.batch([
+    "DELETE FROM sessoes WHERE expira_em <= datetime('now')",
+    {
+      sql: `INSERT INTO sessoes (token_hash, usuario_id, expira_em) VALUES (?, ?, datetime('now', '+${SESSAO_DIAS} days'))`,
+      args: [sha256(token), usuarioId],
+    },
+  ], 'write');
   res.setHeader('Set-Cookie', `${SESSAO_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSAO_DIAS * 86400}`);
 }
 
-function usuarioDaSessao(req) {
+async function usuarioDaSessao(req) {
   const token = lerCookies(req)[SESSAO_COOKIE];
   if (!token) return null;
-  return db.prepare(`
+  return um(`
     SELECT u.id, u.nome, u.email FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id
-    WHERE s.token_hash = ? AND s.expira_em > datetime('now')`).get(sha256(token)) || null;
+    WHERE s.token_hash = ? AND s.expira_em > datetime('now')`, sha256(token));
 }
 
-// limite simples de tentativas de login por IP, em memória
+// limite simples de tentativas de login por IP, em memória (no Vercel vale por instância)
 const tentativas = new Map();
 const JANELA_MS = 15 * 60 * 1000;
 const MAX_TENTATIVAS = 10;
@@ -222,7 +240,7 @@ function validarCadastro(body) {
 }
 
 /* ---------- Gastos e ganhos ---------- */
-function validar(body, tipo, parcial = false) {
+async function validar(body, tipo, parcial = false) {
   const out = {};
   if (!parcial || 'valor' in body) {
     const v = typeof body.valor === 'string' ? Number(body.valor.replace(',', '.')) : body.valor;
@@ -231,7 +249,7 @@ function validar(body, tipo, parcial = false) {
   }
   if (!parcial || 'categoria_id' in body) {
     const id = Number(body.categoria_id);
-    if (!Number.isInteger(id) || !db.prepare(`SELECT 1 FROM ${tipo.categorias} WHERE id = ?`).get(id)) {
+    if (!Number.isInteger(id) || !(await um(`SELECT 1 FROM ${tipo.categorias} WHERE id = ?`, id))) {
       throw new HttpError(400, 'Categoria inexistente');
     }
     out.categoria_id = id;
@@ -250,24 +268,28 @@ const selectLancamento = (tipo) => `
          c.nome AS categoria, c.cor, c.emoji
   FROM ${tipo.tabela} g JOIN ${tipo.categorias} c ON c.id = g.categoria_id`;
 
-function resumo(uid, mes) {
+async function resumo(uid, mes) {
   const total = (tipo, m) =>
-    db.prepare(`SELECT COALESCE(SUM(valor_centavos),0) AS t, COUNT(*) AS n, COALESCE(MAX(valor_centavos),0) AS maior FROM ${tipo.tabela} WHERE usuario_id=? AND substr(data,1,7)=?`).get(uid, m);
-  const porCategoria = (tipo) => db.prepare(`
+    um(`SELECT COALESCE(SUM(valor_centavos),0) AS t, COUNT(*) AS n, COALESCE(MAX(valor_centavos),0) AS maior FROM ${tipo.tabela} WHERE usuario_id=? AND substr(data,1,7)=?`, uid, m);
+  const porCategoria = (tipo) => todos(`
     SELECT c.id, c.nome, c.cor, c.emoji, COALESCE(SUM(g.valor_centavos),0) AS total, COUNT(g.id) AS n
     FROM ${tipo.categorias} c JOIN ${tipo.tabela} g ON g.categoria_id = c.id AND g.usuario_id = ? AND substr(g.data,1,7) = ?
-    GROUP BY c.id ORDER BY total DESC`).all(uid, mes);
-  const atual = total(TIPOS.gastos, mes);
-  const anterior = total(TIPOS.gastos, mesAnterior(mes));
-  const ganhos = total(TIPOS.ganhos, mes);
-  const porDia = db.prepare(`
-    SELECT CAST(substr(data,9,2) AS INTEGER) AS dia, SUM(valor_centavos) AS total
-    FROM gastos WHERE usuario_id=? AND substr(data,1,7)=? GROUP BY data ORDER BY data`).all(uid, mes);
+    GROUP BY c.id ORDER BY total DESC`, uid, mes);
+  const [atual, anterior, ganhos, porDia, gastosPorCategoria, ganhosPorCategoria] = await Promise.all([
+    total(TIPOS.gastos, mes),
+    total(TIPOS.gastos, mesAnterior(mes)),
+    total(TIPOS.ganhos, mes),
+    todos(`
+      SELECT CAST(substr(data,9,2) AS INTEGER) AS dia, SUM(valor_centavos) AS total
+      FROM gastos WHERE usuario_id=? AND substr(data,1,7)=? GROUP BY data ORDER BY data`, uid, mes),
+    porCategoria(TIPOS.gastos),
+    porCategoria(TIPOS.ganhos),
+  ]);
 
   const [y, mo] = mes.split('-').map(Number);
   const diasNoMes = new Date(y, mo, 0).getDate();
   const ehMesAtual = mes === hoje().slice(0, 7);
-  const diasDecorridos = ehMesAtual ? new Date().getDate() : diasNoMes;
+  const diasDecorridos = ehMesAtual ? Number(hoje().slice(8)) : diasNoMes;
   return {
     mes,
     total: atual.t,
@@ -276,11 +298,11 @@ function resumo(uid, mes) {
     media_diaria: Math.round(atual.t / diasDecorridos),
     dias_no_mes: diasNoMes,
     total_mes_anterior: anterior.t,
-    por_categoria: porCategoria(TIPOS.gastos),
+    por_categoria: gastosPorCategoria,
     por_dia: porDia,
     ganhos: ganhos.t,
     quantidade_ganhos: ganhos.n,
-    ganhos_por_categoria: porCategoria(TIPOS.ganhos),
+    ganhos_por_categoria: ganhosPorCategoria,
     saldo: ganhos.t - atual.t,
   };
 }
@@ -299,84 +321,96 @@ async function api(req, res, url) {
   if (pathname === '/api/cadastro' && m === 'POST') {
     const d = validarCadastro(await lerCorpo(req));
     const senhaHash = await hashSenha(d.senha);
-    // daqui em diante tudo é síncrono, então ninguém cadastra o mesmo e-mail no meio do caminho
-    if (db.prepare('SELECT 1 FROM usuarios WHERE email = ?').get(d.email)) {
-      throw new HttpError(409, 'Já existe uma conta com esse e-mail');
+    const jaExiste = () => new HttpError(409, 'Já existe uma conta com esse e-mail');
+    if (await um('SELECT 1 FROM usuarios WHERE email = ?', d.email)) throw jaExiste();
+    let r;
+    try {
+      // numa transação só: o e-mail é UNIQUE, então dois cadastros iguais ao mesmo tempo não passam,
+      // e os gastos lançados antes de existir cadastro ficam com quem criar a primeira conta
+      [r] = await db.batch([
+        { sql: 'INSERT INTO usuarios (nome, email, senha_hash) VALUES (?, ?, ?)', args: [d.nome, d.email, senhaHash] },
+        {
+          sql: `UPDATE gastos SET usuario_id = (SELECT id FROM usuarios WHERE email = ?)
+                WHERE usuario_id IS NULL AND (SELECT COUNT(*) FROM usuarios) = 1`,
+          args: [d.email],
+        },
+      ], 'write');
+    } catch (e) {
+      if (/UNIQUE/i.test(e.message)) throw jaExiste();
+      throw e;
     }
-    const primeiro = !db.prepare('SELECT 1 FROM usuarios LIMIT 1').get();
-    const r = db.prepare('INSERT INTO usuarios (nome, email, senha_hash) VALUES (?, ?, ?)').run(d.nome, d.email, senhaHash);
-    // gastos lançados antes de existir cadastro ficam com quem criar a primeira conta
-    if (primeiro) db.prepare('UPDATE gastos SET usuario_id = ? WHERE usuario_id IS NULL').run(r.lastInsertRowid);
-    criarSessao(res, r.lastInsertRowid);
+    const id = Number(r.lastInsertRowid);
+    await criarSessao(res, id);
     res.statusCode = 201;
-    return { id: Number(r.lastInsertRowid), nome: d.nome, email: d.email };
+    return { id, nome: d.nome, email: d.email };
   }
   if (pathname === '/api/login' && m === 'POST') {
-    const ip = req.socket.remoteAddress;
+    // atrás do proxy do Vercel o IP real vem no x-forwarded-for
+    const ip = process.env.VERCEL ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() : req.socket.remoteAddress;
     checaLimite(ip);
     const body = await lerCorpo(req);
     const email = String(body.email ?? '').trim().toLowerCase();
     const senha = String(body.senha ?? '');
-    const u = db.prepare('SELECT id, nome, email, senha_hash FROM usuarios WHERE email = ?').get(email);
+    const u = await um('SELECT id, nome, email, senha_hash FROM usuarios WHERE email = ?', email);
     const ok = await confereSenha(senha, u ? u.senha_hash : HASH_FICTICIO);
     if (!u || !ok) {
       registraFalha(ip);
       throw new HttpError(401, 'E-mail ou senha incorretos');
     }
     tentativas.delete(ip);
-    criarSessao(res, u.id);
+    await criarSessao(res, u.id);
     return { id: u.id, nome: u.nome, email: u.email };
   }
   if (pathname === '/api/logout' && m === 'POST') {
     const token = lerCookies(req)[SESSAO_COOKIE];
-    if (token) db.prepare('DELETE FROM sessoes WHERE token_hash = ?').run(sha256(token));
+    if (token) await roda('DELETE FROM sessoes WHERE token_hash = ?', sha256(token));
     res.setHeader('Set-Cookie', `${SESSAO_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
     return { ok: true };
   }
 
-  const usuario = usuarioDaSessao(req);
+  const usuario = await usuarioDaSessao(req);
   if (!usuario) throw new HttpError(401, 'Faça login para continuar');
   const uid = usuario.id;
 
   if (pathname === '/api/eu' && m === 'GET') return usuario;
 
   if (pathname === '/api/categorias' && m === 'GET') {
-    return db.prepare('SELECT * FROM categorias ORDER BY id').all();
+    return todos('SELECT * FROM categorias ORDER BY id');
   }
   if (pathname === '/api/categorias-ganho' && m === 'GET') {
-    return db.prepare('SELECT * FROM categorias_ganho ORDER BY id').all();
+    return todos('SELECT * FROM categorias_ganho ORDER BY id');
   }
   if ((match = pathname.match(/^\/api\/(gastos|ganhos)$/))) {
     const tipo = TIPOS[match[1]];
     if (m === 'GET') {
       const mes = searchParams.get('mes') || hoje().slice(0, 7);
       if (!reMes.test(mes)) throw new HttpError(400, 'Mês inválido (use YYYY-MM)');
-      return db.prepare(`${selectLancamento(tipo)} WHERE g.usuario_id=? AND substr(g.data,1,7)=? ORDER BY g.data DESC, g.id DESC`).all(uid, mes);
+      return todos(`${selectLancamento(tipo)} WHERE g.usuario_id=? AND substr(g.data,1,7)=? ORDER BY g.data DESC, g.id DESC`, uid, mes);
     }
     if (m === 'POST') {
-      const d = validar(await lerCorpo(req), tipo);
-      const r = db.prepare(`INSERT INTO ${tipo.tabela} (usuario_id, valor_centavos, categoria_id, descricao, data) VALUES (?,?,?,?,?)`)
-        .run(uid, d.valor_centavos, d.categoria_id, d.descricao ?? '', d.data);
+      const d = await validar(await lerCorpo(req), tipo);
+      const r = await roda(`INSERT INTO ${tipo.tabela} (usuario_id, valor_centavos, categoria_id, descricao, data) VALUES (?,?,?,?,?)`,
+        uid, d.valor_centavos, d.categoria_id, d.descricao ?? '', d.data);
       res.statusCode = 201;
-      return db.prepare(`${selectLancamento(tipo)} WHERE g.id=?`).get(r.lastInsertRowid);
+      return um(`${selectLancamento(tipo)} WHERE g.id=?`, r.lastInsertRowid);
     }
   }
   if ((match = pathname.match(/^\/api\/(gastos|ganhos)\/(\d+)$/))) {
     const tipo = TIPOS[match[1]];
     const id = Number(match[2]);
     if (m === 'DELETE') {
-      const r = db.prepare(`DELETE FROM ${tipo.tabela} WHERE id=? AND usuario_id=?`).run(id, uid);
-      if (!r.changes) throw new HttpError(404, `${tipo.nome} não encontrado`);
+      const r = await roda(`DELETE FROM ${tipo.tabela} WHERE id=? AND usuario_id=?`, id, uid);
+      if (!r.rowsAffected) throw new HttpError(404, `${tipo.nome} não encontrado`);
       return { ok: true };
     }
     if (m === 'PATCH') {
-      const d = validar(await lerCorpo(req), tipo, true);
+      const d = await validar(await lerCorpo(req), tipo, true);
       const campos = Object.keys(d);
       if (!campos.length) throw new HttpError(400, 'Nada para atualizar');
-      const r = db.prepare(`UPDATE ${tipo.tabela} SET ${campos.map((c) => `${c}=?`).join(', ')} WHERE id=? AND usuario_id=?`)
-        .run(...campos.map((c) => d[c]), id, uid);
-      if (!r.changes) throw new HttpError(404, `${tipo.nome} não encontrado`);
-      return db.prepare(`${selectLancamento(tipo)} WHERE g.id=?`).get(id);
+      const r = await roda(`UPDATE ${tipo.tabela} SET ${campos.map((c) => `${c}=?`).join(', ')} WHERE id=? AND usuario_id=?`,
+        ...campos.map((c) => d[c]), id, uid);
+      if (!r.rowsAffected) throw new HttpError(404, `${tipo.nome} não encontrado`);
+      return um(`${selectLancamento(tipo)} WHERE g.id=?`, id);
     }
   }
   if (pathname === '/api/resumo' && m === 'GET') {
@@ -404,10 +438,11 @@ function estatico(req, res, pathname) {
   });
 }
 
-const server = http.createServer(async (req, res) => {
+async function handler(req, res) {
   const url = new URL(req.url, 'http://localhost');
   if (!url.pathname.startsWith('/api/')) return estatico(req, res, url.pathname);
   try {
+    await bancoPronto();
     const out = await api(req, res, url);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
@@ -418,8 +453,12 @@ const server = http.createServer(async (req, res) => {
     if (!e.status) console.error(e);
     res.end(JSON.stringify({ erro: e.status ? e.message : 'Erro interno' }));
   }
-});
+}
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Finanças rodando em http://localhost:${PORT}`);
-});
+// no Vercel o handler é exportado para api/index.js; local, sobe o servidor
+module.exports = handler;
+if (require.main === module) {
+  http.createServer(handler).listen(PORT, '0.0.0.0', () => {
+    console.log(`Finanças rodando em http://localhost:${PORT}`);
+  });
+}
