@@ -219,7 +219,7 @@ function renderCards() {
     const v = ((r.total - r.total_mes_anterior) / r.total_mes_anterior) * 100;
     variacao = `${v >= 0 ? '▲' : '▼'} ${pct(Math.abs(v))} vs. mês anterior`;
   }
-  let uso = 'Lance seus ganhos para ver o saldo';
+  let uso = r.total ? 'Lance seus ganhos para ver quanto do que entrou já foi gasto' : 'Nenhuma movimentação neste mês ainda';
   let barra = '';
   if (r.ganhos > 0) {
     const p = (r.total / r.ganhos) * 100;
@@ -227,12 +227,17 @@ function renderCards() {
     barra = `<div class="uso" aria-hidden="true"><i style="width:${Math.min(100, p)}%"></i></div>`;
   }
   const n = r.quantidade_ganhos;
+  // sem gastos, média e maior gasto não dizem nada: mostra um traço em vez de R$ 0,00
+  const semGasto = '<dd class="val vazio-val">—</dd><dd class="sub">sem gastos ainda</dd>';
+  $('#cards').classList.toggle('negativo', r.saldo < 0);
   $('#cards').innerHTML = `
-    <div class="card destaque${r.saldo < 0 ? ' negativo' : ''}"><div class="rot">Saldo do mês</div><div class="val">${money(r.saldo)}</div>${barra}<div class="sub">${uso}</div></div>
-    <div class="card"><div class="rot">Ganhos</div><div class="val ganho">${money(r.ganhos)}</div><div class="sub">${n} ${n === 1 ? 'lançamento' : 'lançamentos'}</div></div>
-    <div class="card"><div class="rot">Gastos</div><div class="val">${money(r.total)}</div><div class="sub">${variacao}</div></div>
-    <div class="card"><div class="rot">Gasto médio por dia</div><div class="val">${money(r.media_diaria)}</div></div>
-    <div class="card"><div class="rot">Maior gasto</div><div class="val">${money(r.maior)}</div></div>`;
+    <div class="saldo"><div class="rot">Saldo do mês</div><div class="val">${money(r.saldo)}</div>${barra}<p class="sub">${uso}</p></div>
+    <dl class="indicadores">
+      <div><dt>Ganhos</dt><dd class="val ${r.ganhos ? 'ganho' : 'vazio-val'}">${money(r.ganhos)}</dd><dd class="sub">${n} ${n === 1 ? 'lançamento' : 'lançamentos'}</dd></div>
+      <div><dt>Gastos</dt><dd class="val">${money(r.total)}</dd><dd class="sub">${variacao}</dd></div>
+      <div><dt>Média por dia</dt>${r.total ? `<dd class="val">${money(r.media_diaria)}</dd><dd class="sub">gasto diário</dd>` : semGasto}</div>
+      <div><dt>Maior gasto</dt>${r.total ? `<dd class="val">${money(r.maior)}</dd><dd class="sub">num só lançamento</dd>` : semGasto}</div>
+    </dl>`;
 }
 
 const itemLegenda = (c, total) => {
@@ -242,20 +247,24 @@ const itemLegenda = (c, total) => {
 
 function renderRosca() {
   const r = state.resumo;
-  if (!r.total) {
-    $('#rosca').innerHTML = '';
-    $('#legenda').innerHTML = '<li class="vazio">Nenhum gasto neste mês ainda.</li>';
-    return;
-  }
   const R = 42, C = 2 * Math.PI * R;
+  // pequena folga entre os arcos para separar categorias vizinhas
+  const folga = r.por_categoria.length > 1 ? 1.2 : 0;
   let acc = 0;
   const arcos = r.por_categoria.map((c) => {
     const len = (c.total / r.total) * C;
-    const s = `<circle cx="50" cy="50" r="${R}" fill="none" stroke="${c.cor}" stroke-width="14" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-acc}"><title>${esc(c.nome)}: ${money(c.total)}</title></circle>`;
+    const s = `<circle cx="50" cy="50" r="${R}" fill="none" stroke="${c.cor}" stroke-width="10" stroke-dasharray="${Math.max(0.5, len - folga)} ${C - Math.max(0.5, len - folga)}" stroke-dashoffset="${-acc}"><title>${esc(c.nome)}: ${money(c.total)}</title></circle>`;
     acc += len;
     return s;
   }).join('');
-  $('#rosca').innerHTML = `<svg viewBox="0 0 100 100" role="img" aria-label="Gastos por categoria">${arcos}<text class="centro" x="50" y="53" font-size="9" font-weight="700">${r.por_categoria.length} cat.</text></svg>`;
+  $('#rosca').innerHTML = `<svg viewBox="0 0 100 100" role="img" aria-label="Gastos por categoria">
+    <circle class="trilha" cx="50" cy="50" r="${R}" fill="none" stroke-width="10"/>${arcos}
+    <text class="centro centro-val" x="50" y="51" font-size="9" font-weight="650">${money(r.total)}</text>
+    <text class="centro centro-rot" x="50" y="61" font-size="6">no mês</text></svg>`;
+  if (!r.total) {
+    $('#legenda').innerHTML = '<li class="vazio">Os gastos aparecem aqui, divididos por categoria, assim que você lançar o primeiro.</li>';
+    return;
+  }
   $('#legenda').innerHTML = r.por_categoria.map((c) => itemLegenda(c, r.total)).join('');
 }
 
@@ -267,20 +276,21 @@ function renderGanhos() {
 
 function renderDias() {
   const r = state.resumo;
-  if (!r.total) { $('#dias').innerHTML = '<p class="vazio">Sem dados.</p>'; return; }
-  const W = 310, H = 100, base = 88;
-  const max = Math.max(...r.por_dia.map((d) => d.total));
+  const W = 310, H = 100;
+  const max = Math.max(1, ...r.por_dia.map((d) => d.total));
   const slot = W / r.dias_no_mes;
   const mapa = new Map(r.por_dia.map((d) => [d.dia, d.total]));
   let barras = '', rotulos = '';
   for (let d = 1; d <= r.dias_no_mes; d++) {
     const t = mapa.get(d) || 0;
-    const h = t ? Math.max(2, (t / max) * (base - 6)) : 0;
+    const h = t ? Math.max(2, (t / max) * (H - 6)) : 0;
     const x = (d - 1) * slot;
-    if (t) barras += `<rect x="${x + 1}" y="${base - h}" width="${Math.max(2, slot - 2)}" height="${h}" rx="2" fill="var(--brand)"><title>Dia ${d}: ${money(t)}</title></rect>`;
-    if (d === 1 || d % 5 === 0) rotulos += `<text class="eixo" x="${x + slot / 2}" y="${H}">${d}</text>`;
+    if (t) barras += `<rect x="${x + slot * 0.18}" y="${H - h}" width="${slot * 0.64}" height="${h}"><title>Dia ${d}: ${money(t)}</title></rect>`;
+    // o eixo fica fora do SVG para os números não esticarem junto com as barras
+    if (d === 1 || d % 5 === 0) rotulos += `<span style="left:${((x + slot / 2) / W) * 100}%">${d}</span>`;
   }
-  $('#dias').innerHTML = `<svg viewBox="0 0 ${W} ${H + 4}" preserveAspectRatio="none" role="img" aria-label="Gasto por dia">${barras}${rotulos}</svg>`;
+  const vazio = r.total ? '' : '<p class="vazio">Nenhum gasto lançado neste mês.</p>';
+  $('#dias').innerHTML = `<div class="dias-graf"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Gasto por dia">${barras}</svg><div class="eixo-x" aria-hidden="true">${rotulos}</div>${vazio}</div>`;
 }
 
 // valores do filtro: "" (tudo), "gasto", "ganho" ou "tipo:categoria_id"
@@ -310,7 +320,11 @@ function itemLancamento(l, comData = true) {
 function renderLista() {
   const [tipo, cat] = state.filtro.split(':');
   const itens = state.lancamentos.filter((l) => (!tipo || l.tipo === tipo) && (!cat || String(l.categoria_id) === cat));
-  if (!itens.length) { $('#lista').innerHTML = '<li class="vazio">Nenhum lançamento.</li>'; return; }
+  if (!itens.length) {
+    const dica = state.lancamentos.length ? 'Nenhum lançamento com esse filtro.' : 'Nenhum lançamento neste mês. Digite um valor no campo acima, por exemplo “45 mercado”.';
+    $('#lista').innerHTML = `<li class="vazio">${dica}</li>`;
+    return;
+  }
   $('#lista').innerHTML = itens.map((l) => itemLancamento(l)).join('');
 }
 
@@ -319,12 +333,12 @@ function renderBalanco() {
   const r = state.resumo;
   const positivo = r.saldo >= 0;
   let frase = 'Nenhuma movimentação neste mês ainda.';
-  if (r.ganhos || r.total) frase = positivo ? 'Sobrou dinheiro este mês 🎉' : 'Saiu mais do que entrou este mês';
-  $('#balanco').className = `balanco ${positivo ? 'positivo' : 'negativo'}`;
+  if (r.ganhos || r.total) frase = positivo ? 'Sobrou dinheiro este mês' : 'Saiu mais do que entrou este mês';
+  $('#balanco').className = `resumo balanco ${positivo ? 'positivo' : 'negativo'}`;
   $('#balanco').innerHTML = `
     <div class="rot">Balanço do mês</div>
     <div class="val">${r.saldo > 0 ? '+' : r.saldo < 0 ? '−' : ''}${money(Math.abs(r.saldo))}</div>
-    <div class="frase">${frase}</div>
+    <p class="frase">${frase}</p>
     <div class="fluxo">
       <div><span>Entrou</span><b class="ganho">+${money(r.ganhos)}</b></div>
       <div><span>Saiu</span><b class="gasto">−${money(r.total)}</b></div>

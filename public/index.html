@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Meus Gastos</title>
-  <meta name="theme-color" content="#f9e8a9" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#1b1611" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f4f1e6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#171912" media="(prefers-color-scheme: dark)">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icon.svg">
@@ -36,49 +36,52 @@
   </section>
 
   <div id="app" hidden>
-  <header class="topo">
+  <header class="barra-app">
+    <span class="marca">Meus Gastos</span>
+    <div class="conta">
+      <span id="conta-nome"></span>
+      <button id="sair" type="button">Sair</button>
+    </div>
+  </header>
+
+  <section class="lancar" aria-label="Novo lançamento">
     <form id="form" autocomplete="off">
       <div class="tipo-abas" role="radiogroup" aria-label="Tipo de lançamento">
         <button type="button" role="radio" data-tipo="gasto" aria-checked="true">Gasto</button>
         <button type="button" role="radio" data-tipo="ganho" aria-checked="false">Ganho</button>
       </div>
-      <div class="linha-valor">
+      <label class="linha-valor">
         <span class="rs">R$</span>
         <input id="valor" type="text" inputmode="decimal" placeholder="0,00  ou  45 mercado" enterkeyhint="done" aria-label="Valor do gasto" autofocus>
-        <button type="submit" id="btn-add">Adicionar</button>
-      </div>
+      </label>
+      <input id="descricao" type="text" placeholder="Descrição (opcional)" maxlength="200" aria-label="Descrição">
+      <label class="data-label">
+        <span class="data-rot">Data</span>
+        <span id="data-txt">Hoje</span>
+        <input id="data" type="date" aria-label="Data do lançamento">
+      </label>
+      <button type="submit" id="btn-add">Adicionar</button>
       <div id="chips" class="chips" role="radiogroup" aria-label="Categoria"></div>
-      <div class="extras">
-        <input id="descricao" type="text" placeholder="Descrição (opcional)" maxlength="200" aria-label="Descrição">
-        <label class="data-label">
-          <span id="data-txt">Hoje</span>
-          <input id="data" type="date" aria-label="Data do lançamento">
-        </label>
-      </div>
     </form>
-  </header>
+  </section>
 
   <main>
-    <div class="conta">
-      <span id="conta-nome"></span>
-      <button id="sair" type="button">Sair</button>
+    <div class="navegacao">
+      <div class="vista-abas" role="tablist" aria-label="Telas">
+        <button type="button" role="tab" id="aba-painel" data-vista="painel" aria-controls="vista-painel" aria-selected="true">Painel</button>
+        <button type="button" role="tab" id="aba-mes" data-vista="mes" aria-controls="vista-mes" aria-selected="false">Meu mês</button>
+      </div>
+      <nav class="mes-nav" aria-label="Mês">
+        <button id="mes-ant" aria-label="Mês anterior">‹</button>
+        <h1 id="mes-titulo">—</h1>
+        <button id="mes-prox" aria-label="Próximo mês">›</button>
+      </nav>
     </div>
-
-    <div class="vista-abas" role="tablist" aria-label="Telas">
-      <button type="button" role="tab" id="aba-painel" data-vista="painel" aria-controls="vista-painel" aria-selected="true">Painel</button>
-      <button type="button" role="tab" id="aba-mes" data-vista="mes" aria-controls="vista-mes" aria-selected="false">Meu mês</button>
-    </div>
-
-    <nav class="mes-nav" aria-label="Mês">
-      <button id="mes-ant" aria-label="Mês anterior">‹</button>
-      <h1 id="mes-titulo">—</h1>
-      <button id="mes-prox" aria-label="Próximo mês">›</button>
-    </nav>
 
     <div id="vista-mes" class="vista" role="tabpanel" aria-labelledby="aba-mes" hidden>
-      <section id="balanco" class="balanco"></section>
+      <section id="balanco" class="resumo balanco"></section>
 
-      <section class="painel">
+      <section class="secao">
         <div class="lanc-topo">
           <h2>Movimentações</h2>
           <div id="mes-filtro" class="seg" role="radiogroup" aria-label="Mostrar">
@@ -93,33 +96,35 @@
     </div>
 
     <div id="vista-painel" class="vista" role="tabpanel" aria-labelledby="aba-painel">
-    <section class="cards" id="cards"></section>
+      <section class="resumo" id="cards" aria-label="Resumo do mês"></section>
 
-    <section class="painel">
-      <h2>Gastos por categoria</h2>
-      <div class="rosca-wrap">
-        <div id="rosca" class="rosca"></div>
-        <ul id="legenda" class="legenda"></ul>
+      <div class="analise">
+        <section class="secao">
+          <h2>Gastos por categoria</h2>
+          <div class="rosca-wrap">
+            <div id="rosca" class="rosca"></div>
+            <ul id="legenda" class="legenda"></ul>
+          </div>
+        </section>
+
+        <section class="secao">
+          <h2>Gasto por dia</h2>
+          <div id="dias"></div>
+        </section>
       </div>
-    </section>
 
-    <section class="painel" id="painel-ganhos" hidden>
-      <h2>De onde veio o dinheiro</h2>
-      <ul id="legenda-ganhos" class="legenda"></ul>
-    </section>
+      <section class="secao" id="painel-ganhos" hidden>
+        <h2>De onde veio o dinheiro</h2>
+        <ul id="legenda-ganhos" class="legenda"></ul>
+      </section>
 
-    <section class="painel">
-      <h2>Gasto por dia</h2>
-      <div id="dias"></div>
-    </section>
-
-    <section class="painel">
-      <div class="lanc-topo">
-        <h2>Lançamentos</h2>
-        <select id="filtro" aria-label="Filtrar lançamentos"></select>
-      </div>
-      <ul id="lista" class="lista"></ul>
-    </section>
+      <section class="secao">
+        <div class="lanc-topo">
+          <h2>Lançamentos</h2>
+          <select id="filtro" aria-label="Filtrar lançamentos"></select>
+        </div>
+        <ul id="lista" class="lista"></ul>
+      </section>
     </div>
   </main>
   </div>
