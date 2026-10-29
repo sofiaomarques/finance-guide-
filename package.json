@@ -1,0 +1,12 @@
+{
+  "name": "financas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dashboard de gastos mensais com cadastro rápido",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Meus Gastos</title>
+  <meta name="theme-color" content="#1f6f5c">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topo">
+    <form id="form" autocomplete="off">
+      <div class="linha-valor">
+        <span class="rs">R$</span>
+        <input id="valor" type="text" inputmode="decimal" placeholder="0,00  ou  45 mercado" enterkeyhint="done" aria-label="Valor do gasto" autofocus>
+        <button type="submit" id="btn-add">Adicionar</button>
+      </div>
+      <div id="chips" class="chips" role="radiogroup" aria-label="Categoria"></div>
+      <div class="extras">
+        <input id="descricao" type="text" placeholder="Descrição (opcional)" maxlength="200" aria-label="Descrição">
+        <label class="data-label">
+          <span id="data-txt">Hoje</span>
+          <input id="data" type="date" aria-label="Data do gasto">
+        </label>
+      </div>
+    </form>
+  </header>
+
+  <main>
+    <nav class="mes-nav" aria-label="Mês">
+      <button id="mes-ant" aria-label="Mês anterior">‹</button>
+      <h1 id="mes-titulo">—</h1>
+      <button id="mes-prox" aria-label="Próximo mês">›</button>
+    </nav>
+
+    <section class="cards" id="cards"></section>
+
+    <section class="painel">
+      <h2>Por categoria</h2>
+      <div class="rosca-wrap">
+        <div id="rosca" class="rosca"></div>
+        <ul id="legenda" class="legenda"></ul>
+      </div>
+    </section>
+
+    <section class="painel">
+      <h2>Gasto por dia</h2>
+      <div id="dias"></div>
+    </section>
+
+    <section class="painel">
+      <div class="lanc-topo">
+        <h2>Lançamentos</h2>
+        <select id="filtro" aria-label="Filtrar por categoria"></select>
+      </div>
+      <ul id="lista" class="lista"></ul>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>
