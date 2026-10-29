@@ -1,65 +1,26 @@
 # Saldo
 
-Dashboard de gastos e ganhos mensais com cadastro rápido.
+App para anotar gastos e ganhos do mês e ver, num relance, quanto dinheiro sobrou.
 
-**App online:** https://finance-guide-five.vercel.app
+**Acesse:** https://finance-guide-five.vercel.app
 
 ## Como usar
-1. Abra o link acima (no computador ou no celular) e crie sua conta com nome, e-mail e senha.
+1. Abra o link (no computador ou no celular) e crie sua conta com nome, e-mail e senha.
 2. Lance seus gastos e ganhos pela tela **Painel**.
-3. Acompanhe o mês na aba **Meu mês**. As setas no topo trocam o mês exibido nas duas abas.
+3. Acompanhe o mês na aba **Meu mês**. As setas no topo trocam o mês exibido.
 
 No celular, use "Adicionar à tela inicial" no menu do navegador para abrir como um app.
 
-## Contas
-- Cada pessoa cria sua conta e só vê os próprios lançamentos.
-- Senhas guardadas com scrypt; sessão em cookie `HttpOnly` válido por 30 dias.
-- Gastos lançados antes de existir cadastro ficam com quem criar a **primeira** conta.
-- Login bloqueia por 15 min após 10 tentativas erradas do mesmo IP.
-- **Esqueci minha senha** (na tela de login) manda por e-mail um link que vale por 1 hora e só uma vez.
-  Criar a senha nova encerra a sessão nos outros aparelhos. Rodando local, o e-mail aparece no terminal.
+## O que dá para fazer
+- **Lançar em segundos:** digite o valor, toque numa categoria e aperte Enter. Ou escreva tudo de uma vez,
+  como `45 mercado pão`. Errou? Toque em **Desfazer**.
+- **Registrar ganhos:** troque para **Ganho** (ou comece com `+`, como `+3000 salário`) para anotar salário,
+  freela, vendas e outras entradas.
+- **Ver o saldo do mês:** o painel mostra quanto entrou, quanto saiu e quanto sobrou, além dos gastos por
+  categoria e por dia.
+- **Revisar o mês:** a aba **Meu mês** mostra o balanço e as movimentações dia a dia, com filtro para ver só
+  gastos ou só ganhos.
 
-## Cadastro rápido
-- Digite o valor, toque numa categoria e aperte Enter ou **Adicionar**. Trocar de categoria (ou de Gasto para Ganho) não apaga o valor digitado.
-- Ou digite tudo no campo de valor: `45 mercado pão` → R$ 45, Mercado, "pão".
-- A última categoria usada fica selecionada; Enter salva.
-- A data é hoje por padrão; toque em **Hoje** para lançar em outro dia.
-- Toast com **Desfazer** após cada cadastro.
-
-## Ganhos e saldo do mês
-- Troque para **Ganho** no topo do cadastro para lançar dinheiro que entrou (salário, freela, vendas…).
-- Atalho: comece com `+` mesmo em Gasto, ex.: `+3000 salário`.
-- O card principal mostra o **saldo do mês** (ganhos − gastos) e quanto dos ganhos já foi gasto; fica vermelho se o saldo ficar negativo.
-- A lista de lançamentos junta gastos e ganhos; o filtro separa por tipo ou categoria.
-
-## Meu mês
-- Balanço do mês em verde (positivo) ou vermelho (negativo), com quanto entrou e saiu.
-- Movimentações agrupadas por dia, com o saldo de cada dia.
-- Filtro **Todos / Gastos / Ganhos**.
-- A aba escolhida (Painel ou Meu mês) fica salva no navegador.
-
-## Deploy (Vercel)
-O app roda no Vercel em https://finance-guide-five.vercel.app. O Vercel não guarda arquivos
-entre execuções, então os dados ficam num banco
-[Turso](https://turso.tech) (SQLite na nuvem, plano grátis). Sem ele, o site abre mas o login
-avisa "Banco de dados não configurado".
-
-- `public/` é servido direto pelo CDN e `api/index.js` atende as rotas `/api/*` (ver `vercel.json`).
-- Variáveis de ambiente no projeto do Vercel (Settings → Environment Variables):
-  - `TURSO_DATABASE_URL`: URL do banco, ex. `libsql://financas-<usuario>.turso.io`
-  - `TURSO_AUTH_TOKEN`: token de acesso ao banco
-- Para criar o banco: pelo Vercel em **Storage → Turso**, com o prefixo `TURSO_DATABASE` (a integração
-  cria `TURSO_DATABASE_URL` e `TURSO_DATABASE_TURSO_AUTH_TOKEN`, que o app também aceita), ou pela
-  [CLI do Turso](https://docs.turso.tech/cli/introduction): `turso db create financas`,
-  `turso db show financas --url` e `turso db tokens create financas`.
-- Depois de salvar as variáveis, faça **Redeploy**. As tabelas e categorias são criadas sozinhas no primeiro acesso.
-
-### E-mail de recuperação de senha
-Os e-mails saem pelo [Resend](https://resend.com) (plano grátis: 3.000 por mês). Sem a chave, a
-opção "Esqueci minha senha" avisa que a recuperação não foi configurada.
-
-- `RESEND_API_KEY`: chave criada em resend.com → **API Keys** (permissão *Sending access* basta)
-- `EMAIL_REMETENTE` (opcional): remetente, ex. `Saldo <senha@seudominio.com.br>`. Sem ela, usa
-  `onboarding@resend.dev`, que **só entrega para o e-mail da sua própria conta no Resend**. Para mandar
-  para qualquer pessoa, verifique um domínio seu em resend.com → **Domains**.
-- `APP_URL` (opcional): endereço usado no link do e-mail. Sem ela, usa o domínio de produção do Vercel.
+## Sua conta
+- Cada pessoa tem sua própria conta e só vê os próprios lançamentos.
+- Esqueceu a senha? Toque em **Esqueci minha senha** na tela de login para receber um link por e-mail.
