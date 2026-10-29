@@ -27,6 +27,8 @@ const state = {
   lancamentos: [],
   resumo: null,
   filtro: '',
+  vista: localStorage.getItem('vista') === 'mes' ? 'mes' : 'painel',
+  filtroMes: '',
 };
 
 async function api(url, opts = {}) {
@@ -207,6 +209,7 @@ function render() {
   renderDias();
   renderFiltro();
   renderLista();
+  renderMeuMes();
 }
 
 function renderCards() {
@@ -291,26 +294,104 @@ function renderFiltro() {
   sel.value = state.filtro;
 }
 
+// comData: mostra dd/mm na segunda linha (no Meu mês a data já está no cabeçalho do dia)
+function itemLancamento(l, comData = true) {
+  const [, mm, dd] = l.data.split('-');
+  const ganho = l.tipo === 'ganho';
+  const t2 = [comData ? `${dd}/${mm}` : TIPOS[l.tipo].nome, l.descricao && esc(l.categoria)].filter(Boolean).join(' · ');
+  return `<li class="item" style="--cor:${l.cor}">
+      <div class="ico">${l.emoji}</div>
+      <div class="meio"><div class="t1">${esc(l.descricao || l.categoria)}</div><div class="t2">${t2}</div></div>
+      <div class="valor${ganho ? ' ganho' : ''}">${ganho ? '+' : '−'}${money(l.valor_centavos)}</div>
+      <button class="del" data-tipo="${l.tipo}" data-id="${l.id}" aria-label="Excluir ${TIPOS[l.tipo].nome.toLowerCase()}">✕</button>
+    </li>`;
+}
+
 function renderLista() {
   const [tipo, cat] = state.filtro.split(':');
   const itens = state.lancamentos.filter((l) => (!tipo || l.tipo === tipo) && (!cat || String(l.categoria_id) === cat));
   if (!itens.length) { $('#lista').innerHTML = '<li class="vazio">Nenhum lançamento.</li>'; return; }
-  $('#lista').innerHTML = itens.map((l) => {
-    const [, mm, dd] = l.data.split('-');
-    const ganho = l.tipo === 'ganho';
-    return `<li class="item" style="--cor:${l.cor}">
-      <div class="ico">${l.emoji}</div>
-      <div class="meio"><div class="t1">${esc(l.descricao || l.categoria)}</div><div class="t2">${dd}/${mm}${l.descricao ? ` · ${esc(l.categoria)}` : ''}</div></div>
-      <div class="valor${ganho ? ' ganho' : ''}">${ganho ? '+' : ''}${money(l.valor_centavos)}</div>
-      <button class="del" data-tipo="${l.tipo}" data-id="${l.id}" aria-label="Excluir ${TIPOS[l.tipo].nome.toLowerCase()}">✕</button>
-    </li>`;
+  $('#lista').innerHTML = itens.map((l) => itemLancamento(l)).join('');
+}
+
+/* ---------- Meu mês ---------- */
+function renderBalanco() {
+  const r = state.resumo;
+  const positivo = r.saldo >= 0;
+  let frase = 'Nenhuma movimentação neste mês ainda.';
+  if (r.ganhos || r.total) frase = positivo ? 'Sobrou dinheiro este mês 🎉' : 'Saiu mais do que entrou este mês';
+  $('#balanco').className = `balanco ${positivo ? 'positivo' : 'negativo'}`;
+  $('#balanco').innerHTML = `
+    <div class="rot">Balanço do mês</div>
+    <div class="val">${r.saldo > 0 ? '+' : r.saldo < 0 ? '−' : ''}${money(Math.abs(r.saldo))}</div>
+    <div class="frase">${frase}</div>
+    <div class="fluxo">
+      <div><span>Entrou</span><b class="ganho">+${money(r.ganhos)}</b></div>
+      <div><span>Saiu</span><b class="gasto">−${money(r.total)}</b></div>
+    </div>`;
+}
+
+const PLURAL = { '': ['movimentação', 'movimentações'], gasto: ['gasto', 'gastos'], ganho: ['ganho', 'ganhos'] };
+
+function renderMeuMes() {
+  renderBalanco();
+  const f = state.filtroMes;
+  document.querySelectorAll('#mes-filtro button').forEach((b) => b.setAttribute('aria-checked', b.dataset.filtro === f));
+  const itens = state.lancamentos.filter((l) => !f || l.tipo === f);
+
+  const soma = itens.reduce((s, l) => s + (l.tipo === 'ganho' ? l.valor_centavos : -l.valor_centavos), 0);
+  const [um, varios] = PLURAL[f];
+  $('#mes-subtotal').textContent = itens.length
+    ? `${itens.length} ${itens.length === 1 ? um : varios} · ${f ? money(Math.abs(soma)) : `${soma >= 0 ? '+' : '−'}${money(Math.abs(soma))}`}`
+    : '';
+  if (!itens.length) {
+    const nada = { '': 'Nenhuma movimentação', gasto: 'Nenhum gasto', ganho: 'Nenhum ganho' }[f];
+    $('#mes-lista').innerHTML = `<p class="vazio">${nada} neste mês.</p>`;
+    return;
+  }
+
+  // agrupa por dia; a lista já vem ordenada da data mais recente para a mais antiga
+  const dias = new Map();
+  for (const l of itens) {
+    if (!dias.has(l.data)) dias.set(l.data, []);
+    dias.get(l.data).push(l);
+  }
+  $('#mes-lista').innerHTML = [...dias].map(([data, ls]) => {
+    const [y, m, d] = data.split('-').map(Number);
+    const semana = new Date(y, m - 1, d).toLocaleDateString('pt-BR', { weekday: 'long' });
+    const rotulo = data === isoHoje() ? 'Hoje' : `${pad(d)}/${pad(m)} · ${semana[0].toUpperCase()}${semana.slice(1)}`;
+    const totalDia = ls.reduce((s, l) => s + (l.tipo === 'ganho' ? l.valor_centavos : -l.valor_centavos), 0);
+    return `<div class="dia">
+      <div class="dia-topo"><span>${rotulo}</span><span class="${totalDia >= 0 ? 'ganho' : ''}">${totalDia >= 0 ? '+' : '−'}${money(Math.abs(totalDia))}</span></div>
+      <ul class="lista">${ls.map((l) => itemLancamento(l, false)).join('')}</ul>
+    </div>`;
   }).join('');
 }
 
-$('#lista').addEventListener('click', (e) => {
-  const b = e.target.closest('.del');
-  if (b) remover(b.dataset.tipo, Number(b.dataset.id));
+function setVista(vista) {
+  state.vista = vista;
+  localStorage.setItem('vista', vista);
+  document.querySelectorAll('.vista-abas button').forEach((b) => b.setAttribute('aria-selected', b.dataset.vista === vista));
+  $('#vista-painel').hidden = vista !== 'painel';
+  $('#vista-mes').hidden = vista !== 'mes';
+}
+$('.vista-abas').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b) setVista(b.dataset.vista);
 });
+$('#mes-filtro').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  state.filtroMes = b.dataset.filtro;
+  renderMeuMes();
+});
+
+for (const lista of ['#lista', '#mes-lista']) {
+  $(lista).addEventListener('click', (e) => {
+    const b = e.target.closest('.del');
+    if (b) remover(b.dataset.tipo, Number(b.dataset.id));
+  });
+}
 $('#filtro').addEventListener('change', (e) => { state.filtro = e.target.value; renderLista(); });
 $('#mes-ant').addEventListener('click', () => { state.mes = deslocaMes(state.mes, -1); carregar(); });
 $('#mes-prox').addEventListener('click', () => { state.mes = deslocaMes(state.mes, 1); carregar(); });
@@ -375,6 +456,7 @@ async function iniciarApp(usuario) {
     if (!state.categorias[t].some((c) => c.id === state.catSel[t])) state.catSel[t] = null;
   }
   setTipo('gasto');
+  setVista(state.vista);
   await carregar();
   $('#valor').focus();
 }

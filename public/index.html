@@ -64,12 +64,35 @@
       <button id="sair" type="button">Sair</button>
     </div>
 
+    <div class="vista-abas" role="tablist" aria-label="Telas">
+      <button type="button" role="tab" id="aba-painel" data-vista="painel" aria-controls="vista-painel" aria-selected="true">Painel</button>
+      <button type="button" role="tab" id="aba-mes" data-vista="mes" aria-controls="vista-mes" aria-selected="false">Meu mês</button>
+    </div>
+
     <nav class="mes-nav" aria-label="Mês">
       <button id="mes-ant" aria-label="Mês anterior">‹</button>
       <h1 id="mes-titulo">—</h1>
       <button id="mes-prox" aria-label="Próximo mês">›</button>
     </nav>
 
+    <div id="vista-mes" class="vista" role="tabpanel" aria-labelledby="aba-mes" hidden>
+      <section id="balanco" class="balanco"></section>
+
+      <section class="painel">
+        <div class="lanc-topo">
+          <h2>Movimentações</h2>
+          <div id="mes-filtro" class="seg" role="radiogroup" aria-label="Mostrar">
+            <button type="button" role="radio" data-filtro="" aria-checked="true">Todos</button>
+            <button type="button" role="radio" data-filtro="gasto" aria-checked="false">Gastos</button>
+            <button type="button" role="radio" data-filtro="ganho" aria-checked="false">Ganhos</button>
+          </div>
+        </div>
+        <p id="mes-subtotal" class="subtotal"></p>
+        <div id="mes-lista"></div>
+      </section>
+    </div>
+
+    <div id="vista-painel" class="vista" role="tabpanel" aria-labelledby="aba-painel">
     <section class="cards" id="cards"></section>
 
     <section class="painel">
@@ -97,6 +120,7 @@
       </div>
       <ul id="lista" class="lista"></ul>
     </section>
+    </div>
   </main>
   </div>
 
