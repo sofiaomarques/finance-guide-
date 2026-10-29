@@ -58,7 +58,8 @@ avisa "Banco de dados não configurado".
 - Variáveis de ambiente no projeto do Vercel (Settings → Environment Variables):
   - `TURSO_DATABASE_URL`: URL do banco, ex. `libsql://financas-<usuario>.turso.io`
   - `TURSO_AUTH_TOKEN`: token de acesso ao banco
-- Para criar o banco: pelo Vercel em **Storage → Turso** (a integração cria as variáveis), ou pela
+- Para criar o banco: pelo Vercel em **Storage → Turso**, com o prefixo `TURSO_DATABASE` (a integração
+  cria `TURSO_DATABASE_URL` e `TURSO_DATABASE_TURSO_AUTH_TOKEN`, que o app também aceita), ou pela
   [CLI do Turso](https://docs.turso.tech/cli/introduction): `turso db create financas`,
   `turso db show financas --url` e `turso db tokens create financas`.
 - Depois de salvar as variáveis, faça **Redeploy**. As tabelas e categorias são criadas sozinhas no primeiro acesso.

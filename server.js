@@ -17,7 +17,9 @@ const SESSAO_DIAS = 30;
 // ficam num banco Turso (SQLite na nuvem, via HTTP); rodando local, usa o arquivo em data/
 function abrirBanco() {
   const url = process.env.TURSO_DATABASE_URL;
-  if (url) return require('@libsql/client/web').createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
+  // a integração Turso do Vercel cria o token com o prefixo escolhido: TURSO_DATABASE_TURSO_AUTH_TOKEN
+  const authToken = process.env.TURSO_AUTH_TOKEN || process.env.TURSO_DATABASE_TURSO_AUTH_TOKEN;
+  if (url) return require('@libsql/client/web').createClient({ url, authToken });
   if (process.env.VERCEL) return null;
   fs.mkdirSync(DATA, { recursive: true });
   return require('@libsql/client').createClient({ url: `file:${path.join(DATA, 'gastos.db')}` });
