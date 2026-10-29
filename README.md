@@ -8,6 +8,12 @@ npm start
 
 Abra http://localhost:3000. Os dados ficam em `data/gastos.db`.
 
+## Contas
+- Cada pessoa cria sua conta (nome, e-mail, senha) e só vê os próprios gastos.
+- Senhas guardadas com scrypt; sessão em cookie `HttpOnly` válido por 30 dias.
+- Gastos lançados antes de existir cadastro ficam com quem criar a **primeira** conta.
+- Login bloqueia por 15 min após 10 tentativas erradas do mesmo IP.
+
 ## Cadastro rápido
 - Digite o valor e toque numa categoria: salva na hora.
 - Ou digite tudo no campo de valor: `45 mercado pão` → R$ 45, Mercado, "pão".
