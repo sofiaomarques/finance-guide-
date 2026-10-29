@@ -12,6 +12,30 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <section id="auth" class="auth" hidden>
+    <div class="auth-caixa">
+      <h1>Meus Gastos</h1>
+      <div class="auth-abas" role="tablist">
+        <button type="button" role="tab" data-modo="login" aria-selected="true">Entrar</button>
+        <button type="button" role="tab" data-modo="cadastro" aria-selected="false">Criar conta</button>
+      </div>
+      <form id="auth-form" novalidate>
+        <label class="campo" id="campo-nome" hidden>Nome
+          <input id="auth-nome" type="text" autocomplete="name" maxlength="80">
+        </label>
+        <label class="campo">E-mail
+          <input id="auth-email" type="email" autocomplete="email" inputmode="email" required>
+        </label>
+        <label class="campo">Senha
+          <input id="auth-senha" type="password" autocomplete="current-password" minlength="8" required>
+        </label>
+        <p id="auth-erro" class="auth-erro" role="alert" hidden></p>
+        <button type="submit" id="auth-btn">Entrar</button>
+      </form>
+    </div>
+  </section>
+
+  <div id="app" hidden>
   <header class="topo">
     <form id="form" autocomplete="off">
       <div class="linha-valor">
@@ -31,6 +55,11 @@
   </header>
 
   <main>
+    <div class="conta">
+      <span id="conta-nome"></span>
+      <button id="sair" type="button">Sair</button>
+    </div>
+
     <nav class="mes-nav" aria-label="Mês">
       <button id="mes-ant" aria-label="Mês anterior">‹</button>
       <h1 id="mes-titulo">—</h1>
@@ -60,6 +89,7 @@
       <ul id="lista" class="lista"></ul>
     </section>
   </main>
+  </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <script src="/app.js"></script>

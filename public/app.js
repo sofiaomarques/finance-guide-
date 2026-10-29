@@ -27,6 +27,8 @@ async function api(url, opts = {}) {
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const json = await res.json();
+  // sessão expirada no meio do uso: volta para o login
+  if (res.status === 401 && !url.startsWith('/api/login')) mostrarAuth();
   if (!res.ok) throw new Error(json.erro || 'Erro');
   return json;
 }
@@ -256,14 +258,76 @@ $('#filtro').addEventListener('change', (e) => { state.filtro = e.target.value; 
 $('#mes-ant').addEventListener('click', () => { state.mes = deslocaMes(state.mes, -1); carregar(); });
 $('#mes-prox').addEventListener('click', () => { state.mes = deslocaMes(state.mes, 1); carregar(); });
 
-/* ---------- Início ---------- */
-(async function init() {
+/* ---------- Login e cadastro ---------- */
+let modoAuth = 'login';
+function mostrarAuth() {
+  $('#app').hidden = true;
+  $('#auth').hidden = false;
+  $('#auth-email').focus();
+}
+function trocaModo(modo) {
+  modoAuth = modo;
+  const cadastro = modo === 'cadastro';
+  document.querySelectorAll('.auth-abas button').forEach((b) => b.setAttribute('aria-selected', b.dataset.modo === modo));
+  $('#campo-nome').hidden = !cadastro;
+  $('#auth-senha').autocomplete = cadastro ? 'new-password' : 'current-password';
+  $('#auth-senha').placeholder = cadastro ? 'Mínimo de 8 caracteres' : '';
+  $('#auth-btn').textContent = cadastro ? 'Criar conta' : 'Entrar';
+  $('#auth-erro').hidden = true;
+  (cadastro ? $('#auth-nome') : $('#auth-email')).focus();
+}
+$('.auth-abas').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b) trocaModo(b.dataset.modo);
+});
+$('#auth-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const body = { email: $('#auth-email').value, senha: $('#auth-senha').value };
+  if (modoAuth === 'cadastro') body.nome = $('#auth-nome').value;
+  $('#auth-btn').disabled = true;
+  $('#auth-erro').hidden = true;
   try {
-    state.categorias = await api('/api/categorias');
-    if (!state.categorias.some((c) => c.id === state.catSel)) state.catSel = null;
-    renderChips();
-    await carregar();
-    $('#valor').focus();
+    const usuario = await api(modoAuth === 'cadastro' ? '/api/cadastro' : '/api/login', { method: 'POST', body });
+    $('#auth-senha').value = '';
+    await iniciarApp(usuario);
+  } catch (err) {
+    $('#auth-erro').textContent = err.message;
+    $('#auth-erro').hidden = false;
+  } finally {
+    $('#auth-btn').disabled = false;
+  }
+});
+$('#sair').addEventListener('click', async () => {
+  try { await api('/api/logout', { method: 'POST' }); } catch {}
+  state.gastos = [];
+  state.resumo = null;
+  $('#toast').hidden = true;
+  mostrarAuth();
+  trocaModo('login');
+});
+
+/* ---------- Início ---------- */
+async function iniciarApp(usuario) {
+  $('#conta-nome').textContent = `Olá, ${usuario.nome}`;
+  $('#auth').hidden = true;
+  $('#app').hidden = false;
+  state.mes = isoHoje().slice(0, 7);
+  state.categorias = await api('/api/categorias');
+  if (!state.categorias.some((c) => c.id === state.catSel)) state.catSel = null;
+  renderChips();
+  await carregar();
+  $('#valor').focus();
+}
+
+(async function init() {
+  let usuario;
+  try {
+    usuario = await api('/api/eu');
+  } catch {
+    return mostrarAuth();
+  }
+  try {
+    await iniciarApp(usuario);
   } catch (err) {
     toast(err.message, { erro: true });
   }

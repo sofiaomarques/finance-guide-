@@ -258,3 +258,44 @@ main { max-width: 760px; margin: 0 auto; padding: 18px 16px 40px; display: grid;
 .toast[hidden] { display: none; }
 .toast.erro { background: var(--danger); color: #fff; }
 .toast button { border: 0; background: transparent; color: var(--butter); font-weight: 700; text-decoration: underline; padding: 0; }
+
+[hidden] { display: none !important; }
+
+/* ---------- Login / cadastro ---------- */
+.auth {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background:
+    radial-gradient(circle at 15% 10%, var(--butter) 0, transparent 45%),
+    radial-gradient(circle at 90% 95%, color-mix(in srgb, var(--brand-light) 30%, transparent) 0, transparent 40%),
+    var(--bg);
+}
+.auth-caixa {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border-radius: 24px;
+  padding: 28px 22px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 18px;
+}
+.auth-caixa h1 { margin: 0; font-size: 1.6rem; text-align: center; letter-spacing: -0.02em; }
+.auth-caixa h1::before { content: "R$"; display: block; width: 56px; height: 56px; margin: 0 auto 10px; border-radius: 50%; background: var(--brand); color: var(--brand-ink); font-size: 1.2rem; line-height: 56px; box-shadow: 0 0 0 8px var(--butter); }
+.auth-abas { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: var(--butter-soft); border-radius: 999px; }
+.auth-abas button { border: 0; background: transparent; padding: 8px; border-radius: 999px; font-weight: 600; color: var(--butter-ink); }
+.auth-abas button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgb(92 69 16 / 0.15); }
+#auth-form { display: grid; gap: 12px; }
+.campo { display: grid; gap: 4px; font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+.campo input { border: 2px solid transparent; background: var(--field); border-radius: 12px; padding: 10px 12px; font-size: 1rem; color: var(--text); }
+.campo input:focus { outline: none; border-color: var(--brand); }
+.auth-erro { margin: 0; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); font-size: 0.9rem; }
+#auth-btn { border: 0; background: var(--brand); color: var(--brand-ink); font-weight: 700; padding: 13px; border-radius: 14px; box-shadow: 0 3px 0 color-mix(in srgb, var(--brand) 60%, #000); }
+#auth-btn:hover { background: color-mix(in srgb, var(--brand) 88%, #000); }
+#auth-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 color-mix(in srgb, var(--brand) 60%, #000); }
+
+.conta { display: flex; justify-content: flex-end; align-items: center; gap: 10px; font-size: 0.88rem; color: var(--muted); }
+#sair { border: 0; background: var(--butter-soft); color: var(--butter-ink); font-weight: 600; padding: 6px 12px; border-radius: 999px; }
+#sair:hover { background: var(--butter); }
